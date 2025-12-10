@@ -18,9 +18,9 @@ from app.db.models import Base
 async def lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
     """Application lifespan handler for startup/shutdown."""
     logger.info("Starting Kasparro application")
-    async with engine.begin() as conn:
-        await conn.run_sync(Base.metadata.create_all)
-    logger.info("Database tables initialized")
+    # Database tables are managed by Alembic migrations
+    # No need for create_all - it can cause duplicate type errors
+    logger.info("Database connection established")
     yield
     await engine.dispose()
     logger.info("Kasparro application shutdown complete")

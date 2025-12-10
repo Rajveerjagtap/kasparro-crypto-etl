@@ -19,67 +19,69 @@ depends_on: Union[str, Sequence[str], None] = None
 
 
 def upgrade() -> None:
-    # Create enum types
-    data_source_enum = postgresql.ENUM(
-        'coinpaprika', 'coingecko', 'csv',
-        name='data_source_enum',
-        create_type=False
-    )
-    data_source_enum.create(op.get_bind(), checkfirst=True)
+    # Create enum types if they don't exist
+    op.execute("""
+        DO $$ BEGIN
+            CREATE TYPE data_source_enum AS ENUM ('coinpaprika', 'coingecko', 'csv');
+        EXCEPTION
+            WHEN duplicate_object THEN null;
+        END $$;
+    """)
     
-    etl_status_enum = postgresql.ENUM(
-        'success', 'failure', 'running',
-        name='etl_status_enum',
-        create_type=False
-    )
-    etl_status_enum.create(op.get_bind(), checkfirst=True)
-
+    op.execute("""
+        DO $$ BEGIN
+            CREATE TYPE etl_status_enum AS ENUM ('success', 'failure', 'running');
+        EXCEPTION
+            WHEN duplicate_object THEN null;
+        END $$;
+    """)
+    
     # Create raw_data table
-    op.create_table(
-        'raw_data',
-        sa.Column('id', sa.Integer(), autoincrement=True, nullable=False),
-        sa.Column('source', sa.Enum('coinpaprika', 'coingecko', 'csv', name='data_source_enum'), nullable=False),
-        sa.Column('payload', postgresql.JSONB(astext_type=sa.Text()), nullable=False),
-        sa.Column('created_at', sa.DateTime(timezone=True), server_default=sa.text('now()'), nullable=False),
-        sa.PrimaryKeyConstraint('id')
-    )
-    op.create_index('ix_raw_data_source', 'raw_data', ['source'], unique=False)
-    op.create_index('ix_raw_data_created_at', 'raw_data', ['created_at'], unique=False)
-
+    op.execute("""
+        CREATE TABLE IF NOT EXISTS raw_data (
+            id SERIAL PRIMARY KEY,
+            source data_source_enum NOT NULL,
+            payload JSONB NOT NULL,
+            created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+        )
+    """)
+    op.execute("CREATE INDEX IF NOT EXISTS ix_raw_data_source ON raw_data(source)")
+    op.execute("CREATE INDEX IF NOT EXISTS ix_raw_data_created_at ON raw_data(created_at)")
+    
     # Create unified_crypto_data table
-    op.create_table(
-        'unified_crypto_data',
-        sa.Column('id', sa.Integer(), autoincrement=True, nullable=False),
-        sa.Column('symbol', sa.String(length=20), nullable=False),
-        sa.Column('price_usd', sa.Numeric(precision=20, scale=8), nullable=True),
-        sa.Column('market_cap', sa.Numeric(precision=30, scale=2), nullable=True),
-        sa.Column('volume_24h', sa.Numeric(precision=30, scale=2), nullable=True),
-        sa.Column('source', sa.Enum('coinpaprika', 'coingecko', 'csv', name='data_source_enum'), nullable=False),
-        sa.Column('ingested_at', sa.DateTime(timezone=True), server_default=sa.text('now()'), nullable=False),
-        sa.Column('timestamp', sa.DateTime(timezone=True), nullable=False),
-        sa.PrimaryKeyConstraint('id'),
-        sa.UniqueConstraint('symbol', 'source', 'timestamp', name='uq_crypto_symbol_source_timestamp')
-    )
-    op.create_index('ix_unified_crypto_data_symbol', 'unified_crypto_data', ['symbol'], unique=False)
-    op.create_index('ix_unified_crypto_data_source', 'unified_crypto_data', ['source'], unique=False)
-    op.create_index('ix_unified_crypto_data_timestamp', 'unified_crypto_data', ['timestamp'], unique=False)
-
+    op.execute("""
+        CREATE TABLE IF NOT EXISTS unified_crypto_data (
+            id SERIAL PRIMARY KEY,
+            symbol VARCHAR(20) NOT NULL,
+            price_usd NUMERIC(20, 8),
+            market_cap NUMERIC(30, 2),
+            volume_24h NUMERIC(30, 2),
+            source data_source_enum NOT NULL,
+            ingested_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+            timestamp TIMESTAMPTZ NOT NULL,
+            CONSTRAINT uq_crypto_symbol_source_timestamp UNIQUE (symbol, source, timestamp)
+        )
+    """)
+    op.execute("CREATE INDEX IF NOT EXISTS ix_unified_crypto_data_symbol ON unified_crypto_data(symbol)")
+    op.execute("CREATE INDEX IF NOT EXISTS ix_unified_crypto_data_source ON unified_crypto_data(source)")
+    op.execute("CREATE INDEX IF NOT EXISTS ix_unified_crypto_data_timestamp ON unified_crypto_data(timestamp)")
+    
     # Create etl_jobs table
-    op.create_table(
-        'etl_jobs',
-        sa.Column('id', sa.Integer(), autoincrement=True, nullable=False),
-        sa.Column('source', sa.Enum('coinpaprika', 'coingecko', 'csv', name='data_source_enum'), nullable=False),
-        sa.Column('status', sa.Enum('success', 'failure', 'running', name='etl_status_enum'), nullable=False),
-        sa.Column('last_processed_timestamp', sa.DateTime(timezone=True), nullable=True),
-        sa.Column('records_processed', sa.Integer(), nullable=False, server_default='0'),
-        sa.Column('started_at', sa.DateTime(timezone=True), server_default=sa.text('now()'), nullable=False),
-        sa.Column('completed_at', sa.DateTime(timezone=True), nullable=True),
-        sa.Column('error_message', sa.String(length=1000), nullable=True),
-        sa.PrimaryKeyConstraint('id')
-    )
-    op.create_index('ix_etl_jobs_source', 'etl_jobs', ['source'], unique=False)
-    op.create_index('ix_etl_jobs_status', 'etl_jobs', ['status'], unique=False)
-    op.create_index('ix_etl_jobs_started_at', 'etl_jobs', ['started_at'], unique=False)
+    op.execute("""
+        CREATE TABLE IF NOT EXISTS etl_jobs (
+            id SERIAL PRIMARY KEY,
+            source data_source_enum NOT NULL,
+            status etl_status_enum NOT NULL,
+            last_processed_timestamp TIMESTAMPTZ,
+            records_processed INTEGER NOT NULL DEFAULT 0,
+            started_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+            completed_at TIMESTAMPTZ,
+            error_message VARCHAR(1000)
+        )
+    """)
+    op.execute("CREATE INDEX IF NOT EXISTS ix_etl_jobs_source ON etl_jobs(source)")
+    op.execute("CREATE INDEX IF NOT EXISTS ix_etl_jobs_status ON etl_jobs(status)")
+    op.execute("CREATE INDEX IF NOT EXISTS ix_etl_jobs_started_at ON etl_jobs(started_at)")
 
 
 def downgrade() -> None:

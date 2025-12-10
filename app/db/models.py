@@ -50,7 +50,7 @@ class RawData(Base):
 
     id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
     source: Mapped[DataSource] = mapped_column(
-        Enum(DataSource, name="data_source_enum"),
+        Enum(DataSource, name="data_source_enum", create_type=False),
         nullable=False,
     )
     payload: Mapped[dict[str, Any]] = mapped_column(JSONB, nullable=False)
@@ -113,7 +113,7 @@ class ETLJob(Base):
         nullable=False,
     )
     status: Mapped[ETLStatus] = mapped_column(
-        Enum(ETLStatus, name="etl_status_enum"),
+        Enum(ETLStatus, name="etl_status_enum", create_type=False),
         nullable=False,
     )
     last_processed_timestamp: Mapped[datetime | None] = mapped_column(
