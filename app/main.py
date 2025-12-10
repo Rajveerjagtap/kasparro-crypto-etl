@@ -9,6 +9,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from app.api.routes import router
 from app.core.config import settings
 from app.core.logging import logger
+from app.core.middleware import MetricsMiddleware, RequestLoggingMiddleware
 from app.db.session import engine
 from app.db.models import Base
 
@@ -31,6 +32,10 @@ app = FastAPI(
     version="1.0.0",
     lifespan=lifespan,
 )
+
+# Add observability middleware (order matters: last added = first executed)
+app.add_middleware(MetricsMiddleware)
+app.add_middleware(RequestLoggingMiddleware)
 
 app.add_middleware(
     CORSMiddleware,

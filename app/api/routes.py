@@ -6,6 +6,8 @@ from datetime import datetime, timezone
 from typing import Optional
 
 from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException, Query
+from fastapi.responses import PlainTextResponse
+from pydantic import BaseModel, Field
 from sqlalchemy import distinct, func, select, text
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -424,3 +426,218 @@ async def trigger_etl_all(
 async def get_available_sources() -> list[str]:
     """List all available data sources."""
     return [source.value for source in DataSource]
+
+
+# ============== GET /metrics - Prometheus-style metrics (P2.4) ==============
+
+
+@router.get("/metrics", response_class=PlainTextResponse)
+async def get_metrics(
+    db: AsyncSession = Depends(get_db),
+) -> str:
+    """
+    Return Prometheus-compatible metrics.
+    
+    Includes:
+    - http_requests_total: Counter by method/status
+    - etl_runs_total: Counter by source/status  
+    - etl_last_duration_seconds: Gauge by source
+    """
+    from app.core.middleware import metrics_collector
+    
+    # Update ETL metrics from database
+    for source in DataSource:
+        # Get ETL run counts by status
+        for status in ETLStatus:
+            count_query = select(func.count()).where(
+                ETLJob.source == source,
+                ETLJob.status == status,
+            )
+            result = await db.execute(count_query)
+            count = result.scalar() or 0
+            
+            # Update collector (set count, not increment)
+            metrics_collector._etl_runs[(source.value, status.value)] = count
+        
+        # Get last duration for successful runs
+        last_job_query = (
+            select(ETLJob)
+            .where(
+                ETLJob.source == source,
+                ETLJob.status == ETLStatus.SUCCESS,
+                ETLJob.completed_at.isnot(None),
+            )
+            .order_by(ETLJob.completed_at.desc())
+            .limit(1)
+        )
+        result = await db.execute(last_job_query)
+        last_job = result.scalar_one_or_none()
+        
+        if last_job and last_job.completed_at and last_job.started_at:
+            duration = (last_job.completed_at - last_job.started_at).total_seconds()
+            metrics_collector.set_etl_duration(source.value, duration)
+    
+    return metrics_collector.get_prometheus_output()
+
+
+# ============== GET /runs/compare - Run Comparison (P2.6) ==============
+
+
+class RunComparisonResponse(BaseModel):
+    """Response schema for run comparison endpoint."""
+    
+    source: DataSource
+    run_id_current: int
+    run_id_previous: int
+    current_run_at: datetime
+    previous_run_at: datetime
+    record_count_current: int
+    record_count_previous: int
+    record_count_change: int
+    record_count_change_percent: float
+    price_volatility: Optional[float] = Field(
+        None, description="Average price change % between runs"
+    )
+    anomaly_detected: bool = Field(
+        description="True if record count changed by > 20%"
+    )
+
+
+@router.get("/runs/compare", response_model=RunComparisonResponse)
+async def compare_runs(
+    source: DataSource = Query(..., description="Data source to compare runs for"),
+    db: AsyncSession = Depends(get_db),
+) -> RunComparisonResponse:
+    """
+    Compare the last 2 successful ETL runs for a given source.
+    
+    Returns:
+    - run_id_current vs run_id_previous
+    - record_count_change (difference)
+    - price_volatility (average price change % between runs)
+    - anomaly_detected (true if record count changed by > 20%)
+    """
+    # Fetch last 2 successful runs for the source
+    runs_query = (
+        select(ETLJob)
+        .where(
+            ETLJob.source == source,
+            ETLJob.status == ETLStatus.SUCCESS,
+        )
+        .order_by(ETLJob.completed_at.desc())
+        .limit(2)
+    )
+    result = await db.execute(runs_query)
+    runs = result.scalars().all()
+    
+    if len(runs) < 2:
+        raise HTTPException(
+            status_code=404,
+            detail=f"Need at least 2 successful runs to compare. Found: {len(runs)}",
+        )
+    
+    current_run = runs[0]
+    previous_run = runs[1]
+    
+    # Calculate record count change
+    record_count_change = current_run.records_processed - previous_run.records_processed
+    
+    # Calculate change percentage
+    if previous_run.records_processed > 0:
+        change_percent = (record_count_change / previous_run.records_processed) * 100
+    else:
+        change_percent = 100.0 if current_run.records_processed > 0 else 0.0
+    
+    # Anomaly detection: > 20% change in record count
+    anomaly_detected = abs(change_percent) > 20.0
+    
+    # Calculate price volatility
+    # Get average prices from data around each run's timestamp
+    price_volatility = await _calculate_price_volatility(
+        db, source, current_run, previous_run
+    )
+    
+    return RunComparisonResponse(
+        source=source,
+        run_id_current=current_run.id,
+        run_id_previous=previous_run.id,
+        current_run_at=current_run.completed_at or current_run.started_at,
+        previous_run_at=previous_run.completed_at or previous_run.started_at,
+        record_count_current=current_run.records_processed,
+        record_count_previous=previous_run.records_processed,
+        record_count_change=record_count_change,
+        record_count_change_percent=round(change_percent, 2),
+        price_volatility=price_volatility,
+        anomaly_detected=anomaly_detected,
+    )
+
+
+async def _calculate_price_volatility(
+    db: AsyncSession,
+    source: DataSource,
+    current_run: ETLJob,
+    previous_run: ETLJob,
+) -> Optional[float]:
+    """
+    Calculate average price change percentage between two runs.
+    
+    Compares prices of symbols present in both runs.
+    """
+    if not current_run.completed_at or not previous_run.completed_at:
+        return None
+    
+    # Get symbols and their average prices from current run period
+    current_prices_query = (
+        select(
+            UnifiedCryptoData.symbol,
+            func.avg(UnifiedCryptoData.price_usd).label("avg_price"),
+        )
+        .where(
+            UnifiedCryptoData.source == source,
+            UnifiedCryptoData.ingested_at >= previous_run.completed_at,
+            UnifiedCryptoData.ingested_at <= current_run.completed_at,
+        )
+        .group_by(UnifiedCryptoData.symbol)
+    )
+    current_result = await db.execute(current_prices_query)
+    current_prices = {row.symbol: row.avg_price for row in current_result}
+    
+    # Get prices from previous run period
+    # Estimate previous period as same duration before previous_run.completed_at
+    run_duration = current_run.completed_at - previous_run.completed_at
+    previous_start = previous_run.completed_at - run_duration
+    
+    previous_prices_query = (
+        select(
+            UnifiedCryptoData.symbol,
+            func.avg(UnifiedCryptoData.price_usd).label("avg_price"),
+        )
+        .where(
+            UnifiedCryptoData.source == source,
+            UnifiedCryptoData.ingested_at >= previous_start,
+            UnifiedCryptoData.ingested_at < previous_run.completed_at,
+        )
+        .group_by(UnifiedCryptoData.symbol)
+    )
+    previous_result = await db.execute(previous_prices_query)
+    previous_prices = {row.symbol: row.avg_price for row in previous_result}
+    
+    if not current_prices or not previous_prices:
+        return None
+    
+    # Calculate percentage change for common symbols
+    changes = []
+    for symbol in current_prices:
+        if symbol in previous_prices:
+            current_price = current_prices[symbol]
+            previous_price = previous_prices[symbol]
+            
+            if current_price and previous_price and previous_price > 0:
+                pct_change = ((current_price - previous_price) / previous_price) * 100
+                changes.append(abs(pct_change))
+    
+    if not changes:
+        return None
+    
+    # Return average absolute price change
+    return round(sum(changes) / len(changes), 2)
