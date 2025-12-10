@@ -21,6 +21,7 @@ htmlcov/
 
 # Data
 data/*.csv
+!data/crypto_data.csv
 !data/.gitkeep
 
 # Docker
