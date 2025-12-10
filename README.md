@@ -1,6 +1,9 @@
 # Kasparro - Crypto Data ETL & API Platform
 
 A production-grade ETL and Backend system for ingesting cryptocurrency data from multiple sources (CoinPaprika, CoinGecko, CSV), normalizing it, and exposing it via a RESTful API.
+![Uploading Gemini_Generated_Image_fob8d0fob8d0fob8.png…]()
+
+
 
 ## Features
 
