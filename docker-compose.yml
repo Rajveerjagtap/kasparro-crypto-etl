@@ -5,33 +5,49 @@ services:
     image: postgres:15-alpine
     container_name: kasparro_db
     environment:
-      POSTGRES_USER: postgres
-      POSTGRES_PASSWORD: postgres
-      POSTGRES_DB: kasparro
+      POSTGRES_USER: kasparro
+      POSTGRES_PASSWORD: kasparro
+      POSTGRES_DB: kasparro_db
     ports:
       - "5432:5432"
     volumes:
       - postgres_data:/var/lib/postgresql/data
     healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U postgres"]
+      test: ["CMD-SHELL", "pg_isready -U kasparro -d kasparro_db"]
       interval: 5s
       timeout: 5s
       retries: 5
+    networks:
+      - kasparro_network
 
-  app:
+  backend:
     build:
       context: .
       dockerfile: Dockerfile
-    container_name: kasparro_app
+    container_name: kasparro_backend
     environment:
-      - DB_URL=postgresql+asyncpg://postgres:postgres@db:5432/kasparro
+      - DATABASE_URL=postgresql+asyncpg://kasparro:kasparro@db:5432/kasparro_db
+      - DB_HOST=db
+      - DB_PORT=5432
+      - DB_USER=kasparro
+      - DB_PASSWORD=kasparro
+      - DB_NAME=kasparro_db
+      - APP_NAME=Kasparro
+      - DEBUG=false
+      - LOG_LEVEL=INFO
     ports:
       - "8000:8000"
     depends_on:
       db:
         condition: service_healthy
     volumes:
-      - ./data:/app/data
+      - ./data:/code/data
+    networks:
+      - kasparro_network
 
 volumes:
   postgres_data:
+
+networks:
+  kasparro_network:
+    driver: bridge
