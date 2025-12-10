@@ -45,6 +45,14 @@ docker-down:
 db-up:
 	docker-compose up -d db
 
+# ============== Scheduler (Cloud ETL) ==============
+
+schedule:
+	python -m app.scheduler
+
+schedule-docker:
+	docker-compose run --rm backend python -m app.scheduler
+
 # ============== Cleanup ==============
 
 clean:
