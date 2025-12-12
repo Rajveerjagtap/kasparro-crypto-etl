@@ -2,6 +2,14 @@
 
 A production-grade ETL and Backend system for ingesting cryptocurrency data from multiple sources (CoinPaprika, CoinGecko, CSV), normalizing it, and exposing it via a RESTful API.
 
+## 🚀 Live Demo
+
+**Base URL:** `https://kasparro-api-im89.onrender.com`
+
+- **API Documentation (Swagger UI):** [https://kasparro-api-im89.onrender.com/docs](https://kasparro-api-im89.onrender.com/docs)
+- **Health Check:** [https://kasparro-api-im89.onrender.com/health](https://kasparro-api-im89.onrender.com/health)
+- **Stats Endpoint:** [https://kasparro-api-im89.onrender.com/api/v1/stats](https://kasparro-api-im89.onrender.com/api/v1/stats)
+
 <img width="2816" height="1536" alt="Gemini_Generated_Image_fob8d0fob8d0fob8" src="https://github.com/user-attachments/assets/a4da84c5-1a9e-48a8-9ef4-c7cfdcb26bc1" />
 
 
