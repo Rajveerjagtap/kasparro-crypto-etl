@@ -164,7 +164,7 @@ async def get_stats(db: AsyncSession = Depends(get_db)) -> StatsResponse:
     symbols_query = select(func.count(distinct(UnifiedCryptoData.symbol)))
     unique_symbols = (await db.execute(symbols_query)).scalar() or 0
 
-    # Stats per symbol with sources
+    # Stats per symbol
     stats_query = (
         select(
             UnifiedCryptoData.symbol,
@@ -172,64 +172,21 @@ async def get_stats(db: AsyncSession = Depends(get_db)) -> StatsResponse:
             func.avg(UnifiedCryptoData.price_usd).label("avg_price"),
             func.max(UnifiedCryptoData.price_usd).label("max_price"),
             func.min(UnifiedCryptoData.price_usd).label("min_price"),
-            func.array_agg(distinct(UnifiedCryptoData.source)).label("sources"),
         )
         .group_by(UnifiedCryptoData.symbol)
     )
+    stats_result = await db.execute(stats_query)
     
-    try:
-        stats_result = (await db.execute(stats_query)).fetchall()
-    except Exception:
-        # SQLite doesn't support array_agg, fallback
-        stats_query = (
-            select(
-                UnifiedCryptoData.symbol,
-                func.count(UnifiedCryptoData.id).label("count"),
-                func.avg(UnifiedCryptoData.price_usd).label("avg_price"),
-                func.max(UnifiedCryptoData.price_usd).label("max_price"),
-                func.min(UnifiedCryptoData.price_usd).label("min_price"),
-            )
-            .group_by(UnifiedCryptoData.symbol)
+    symbol_stats = [
+        SymbolStats(
+            symbol=row.symbol,
+            record_count=row.count,
+            avg_price=float(row.avg_price) if row.avg_price else 0.0,
+            max_price=float(row.max_price) if row.max_price else 0.0,
+            min_price=float(row.min_price) if row.min_price else 0.0,
         )
-        stats_result = (await db.execute(stats_query)).fetchall()
-    
-    symbol_stats = []
-    for row in stats_result:
-        sources = getattr(row, 'sources', None) or [s.value for s in DataSource]
-        symbol_stats.append(
-            SymbolStats(
-                symbol=row.symbol,
-                record_count=row.count,
-                avg_price_usd=float(row.avg_price) if row.avg_price else 0.0,
-                max_price_usd=float(row.max_price) if row.max_price else 0.0,
-                min_price_usd=float(row.min_price) if row.min_price else 0.0,
-                sources=sources if isinstance(sources, list) else [str(s) for s in sources] if sources else [],
-            )
-        )
-
-    # ETL job stats
-    etl_jobs_query = select(ETLJob)
-    etl_jobs_result = await db.execute(etl_jobs_query)
-    etl_jobs = etl_jobs_result.scalars().all()
-    
-    total_jobs = len(etl_jobs)
-    successful_jobs = sum(1 for j in etl_jobs if j.status == ETLStatus.SUCCESS)
-    failed_jobs = sum(1 for j in etl_jobs if j.status == ETLStatus.FAILURE)
-    total_records_processed = sum(j.records_processed or 0 for j in etl_jobs)
-    
-    # Get last success/failure timestamps
-    last_success = max((j.completed_at for j in etl_jobs if j.status == ETLStatus.SUCCESS and j.completed_at), default=None)
-    last_failure = max((j.completed_at for j in etl_jobs if j.status == ETLStatus.FAILURE and j.completed_at), default=None)
-    
-    # Get last job duration
-    last_job = max(etl_jobs, key=lambda j: j.started_at, default=None) if etl_jobs else None
-    last_job_duration = None
-    if last_job and last_job.completed_at and last_job.started_at:
-        last_job_duration = (last_job.completed_at - last_job.started_at).total_seconds()
-    
-    # Get data freshness
-    freshness_query = select(func.max(UnifiedCryptoData.timestamp))
-    data_freshness = (await db.execute(freshness_query)).scalar()
+        for row in stats_result
+    ]
 
     latency_ms = (time.perf_counter() - start_time) * 1000
 
@@ -239,20 +196,12 @@ async def get_stats(db: AsyncSession = Depends(get_db)) -> StatsResponse:
             total_records=total,
             api_latency_ms=round(latency_ms, 2),
         ),
-        total_records=total,
-        unique_symbols=unique_symbols,
-        sources_active=[s.value for s in DataSource],
         etl_stats=ETLStats(
-            total_jobs=total_jobs,
-            successful_jobs=successful_jobs,
-            failed_jobs=failed_jobs,
-            last_success_at=last_success,
-            last_failure_at=last_failure,
-            last_job_duration_seconds=last_job_duration,
-            total_records_processed=total_records_processed,
+            total_records_ingested=total,
+            unique_symbols=unique_symbols,
+            sources_active=len(DataSource),
         ),
-        symbol_stats=symbol_stats,
-        data_freshness=data_freshness,
+        symbol_stats=symbol_stats
     )
 
 
@@ -265,8 +214,7 @@ async def get_metrics():
     Expose Prometheus metrics.
     """
     from app.core.middleware import metrics_collector
-    from fastapi.responses import PlainTextResponse
-    return PlainTextResponse(content=metrics_collector.get_prometheus_output(), media_type="text/plain")
+    return metrics_collector.generate_latest()
 
 
 # ============== GET /runs/compare - Compare ETL Runs (P2.6) ==============
