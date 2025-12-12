@@ -175,16 +175,30 @@ The easiest way to deploy with automatic infrastructure setup.
 Deploy to any Docker-compatible host (AWS ECS, DigitalOcean, etc.):
 
 ```bash
-# Build and push image
-docker build -t your-registry/kasparro:latest .
-docker push your-registry/kasparro:latest
+# Build the image
+docker build -t kasparro:latest .
 
 # Run with your PostgreSQL connection
+# Note: DATABASE_URL must use postgresql+asyncpg:// format for SQLAlchemy async
 docker run -d \
-  -e DATABASE_URL="postgresql://user:pass@host:5432/db" \
+  -e DATABASE_URL="postgresql+asyncpg://user:password@host:5432/database" \
   -p 8000:8000 \
-  your-registry/kasparro:latest
+  kasparro:latest
 ```
+
+**Local Development with Docker Compose:**
+```bash
+# Start PostgreSQL + API (uses docker-compose.yml)
+make up
+
+# View logs
+make logs
+
+# Stop all services
+make down
+```
+
+API will be available at `http://localhost:8000`
 
 ### Scheduled ETL
 
