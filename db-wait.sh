@@ -8,14 +8,32 @@ if [ -z "$DATABASE_URL" ]; then
     exit 1
 fi
 
-# Extract database connection details from DATABASE_URL
-# Format: postgresql://user:password@host:port/database
-if [[ $DATABASE_URL =~ postgresql://([^:]+):([^@]+)@([^:]+):([^/]+)/(.+) ]]; then
-    DB_USER="${BASH_REMATCH[1]}"
-    DB_PASS="${BASH_REMATCH[2]}"
-    DB_HOST="${BASH_REMATCH[3]}"
-    DB_PORT="${BASH_REMATCH[4]}"
-    DB_NAME="${BASH_REMATCH[5]}"
+echo "DATABASE_URL format: ${DATABASE_URL:0:30}..."
+
+# Extract database connection details from DATABASE_URL using Python (more reliable)
+# Render provides: postgres://user:password@host:port/database or postgresql://...
+eval $(python3 << 'EOF'
+import os
+from urllib.parse import urlparse
+
+url = os.environ.get('DATABASE_URL', '')
+# Handle both postgres:// and postgresql:// schemes
+url = url.replace('postgres://', 'postgresql://')
+
+try:
+    parsed = urlparse(url)
+    print(f'DB_USER="{parsed.username or "kasparro"}"')
+    print(f'DB_HOST="{parsed.hostname or "localhost"}"')
+    print(f'DB_PORT="{parsed.port or 5432}"')
+    print(f'DB_NAME="{parsed.path.lstrip("/").split("?")[0] or "kasparro"}"')
+    print('PARSE_SUCCESS="true"')
+except Exception as e:
+    print(f'# Parse error: {e}')
+    print('PARSE_SUCCESS="false"')
+EOF
+)
+
+if [ "$PARSE_SUCCESS" = "true" ]; then
     echo "✓ Parsed DATABASE_URL: $DB_USER@$DB_HOST:$DB_PORT/$DB_NAME"
 else
     echo "WARNING: Could not parse DATABASE_URL, using defaults"
