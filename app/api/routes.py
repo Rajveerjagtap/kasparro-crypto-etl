@@ -308,12 +308,30 @@ async def compare_runs(
 async def run_etl_for_source(
     source: DataSource,
     background_tasks: BackgroundTasks,
+    sync: bool = False,
 ):
     """
-    Trigger ETL job for a specific source in the background.
+    Trigger ETL job for a specific source.
+    Set sync=true to run synchronously and get immediate results.
     """
-    background_tasks.add_task(etl_service.run_etl_for_source, source)
-    return {"message": f"ETL job started for {source.value}", "status": "queued"}
+    if sync:
+        try:
+            job = await etl_service.run_etl_for_source(source)
+            return {
+                "message": f"ETL job completed for {source.value}",
+                "status": "success",
+                "job_id": job.id,
+                "records_processed": job.records_processed,
+            }
+        except Exception as e:
+            return {
+                "message": f"ETL job failed for {source.value}",
+                "status": "failed",
+                "error": str(e),
+            }
+    else:
+        background_tasks.add_task(etl_service.run_etl_for_source, source)
+        return {"message": f"ETL job started for {source.value}", "status": "queued"}
 
 
 @router.post("/etl/run")

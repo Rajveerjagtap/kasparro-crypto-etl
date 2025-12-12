@@ -30,10 +30,10 @@ services:
     runtime: docker
     plan: free
     region: oregon
-    
+
     # Health check for zero-downtime deploys
     healthCheckPath: /health
-    
+
     # Environment variables
     envVars:
       - key: DATABASE_URL
@@ -46,11 +46,11 @@ services:
         value: "production"
       - key: LOG_LEVEL
         value: "INFO"
-    
+
     # Docker configuration
     dockerfilePath: ./Dockerfile
     dockerContext: .
-    
+
     # Use startup script that handles DB wait and migrations
     dockerCommand: /code/start-web.sh
 
@@ -61,7 +61,7 @@ services:
     runtime: docker
     plan: free
     region: oregon
-    
+
     # Environment variables (same DB connection)
     envVars:
       - key: DATABASE_URL
@@ -77,10 +77,10 @@ services:
       # Schedule interval: 3600 = 1 hour (adjust as needed)
       - key: SCHEDULE_INTERVAL
         value: "3600"
-    
+
     # Docker configuration
     dockerfilePath: ./Dockerfile
     dockerContext: .
-    
+
     # Use startup script for scheduler
     dockerCommand: /code/start-scheduler.sh
