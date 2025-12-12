@@ -81,8 +81,8 @@ kasparro/
 
 1. Clone the repository:
 ```bash
-git clone https://github.com/yourusername/kasparro.git
-cd kasparro
+git clone https://github.com/Rajveerjagtap/kasparro-crypto-etl.git
+cd kasparro-crypto-etl
 ```
 
 2. Copy environment file:
@@ -107,12 +107,11 @@ make run
 | Endpoint | Method | Description |
 |----------|--------|-------------|
 | `/health` | GET | Health check |
-| `/api/v1/crypto` | GET | List crypto data (paginated) |
-| `/api/v1/crypto/{symbol}` | GET | Get data by symbol |
+| `/api/v1/data` | GET | List crypto data (with filters) |
+| `/api/v1/stats` | GET | Data statistics |
 | `/api/v1/etl/run/{source}` | POST | Trigger ETL for source |
-| `/api/v1/etl/run` | POST | Trigger ETL for all sources |
 | `/api/v1/etl/jobs` | GET | View ETL job history |
-| `/api/v1/sources` | GET | List available sources |
+| `/api/v1/metrics` | GET | Prometheus metrics |
 
 ### Running Tests
 
@@ -160,8 +159,8 @@ The easiest way to deploy with automatic infrastructure setup.
 
 3. **Verify deployment:**
    ```bash
-   curl https://kasparro-api.onrender.com/health
-   curl https://kasparro-api.onrender.com/data
+   curl https://kasparro-api-im89.onrender.com/health
+   curl https://kasparro-api-im89.onrender.com/api/v1/data
    ```
 
 **Services Created:**
@@ -171,17 +170,7 @@ The easiest way to deploy with automatic infrastructure setup.
 | `kasparro-api` | Web Service | Public FastAPI endpoint |
 | `kasparro-scheduler` | Background Worker | Hourly ETL cron job |
 
-### Option 2: Railway.app
-
-Alternative deployment with simpler UI.
-
-1. Go to [railway.app](https://railway.app)
-2. **New Project** → **Deploy from GitHub repo**
-3. Add **PostgreSQL** plugin
-4. Set environment variable: `DATABASE_URL` (auto-populated)
-5. Deploy automatically detects `railway.toml`
-
-### Option 3: Manual Docker Deployment
+### Option 2: Manual Docker Deployment
 
 Deploy to any Docker-compatible host (AWS ECS, DigitalOcean, etc.):
 
@@ -218,7 +207,6 @@ make schedule-docker
 |----------|-------------|---------|
 | `DATABASE_URL` | PostgreSQL connection string | Required |
 | `SCHEDULE_INTERVAL` | ETL interval in seconds | `3600` (1 hour) |
-| `ENVIRONMENT` | `development` or `production` | `development` |
 | `LOG_LEVEL` | Logging level | `INFO` |
 
 ## License
