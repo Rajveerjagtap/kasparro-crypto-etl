@@ -4,11 +4,29 @@ A production-grade ETL and Backend system for ingesting cryptocurrency data from
 
 ## 🚀 Live Demo
 
-**Base URL:** `https://kasparro-api-im89.onrender.com`
+**🌐 Base URL:** [`https://kasparro-api-im89.onrender.com`](https://kasparro-api-im89.onrender.com)
 
-- **API Documentation (Swagger UI):** [https://kasparro-api-im89.onrender.com/docs](https://kasparro-api-im89.onrender.com/docs)
-- **Health Check:** [https://kasparro-api-im89.onrender.com/health](https://kasparro-api-im89.onrender.com/health)
-- **Stats Endpoint:** [https://kasparro-api-im89.onrender.com/api/v1/stats](https://kasparro-api-im89.onrender.com/api/v1/stats)
+### Quick Verification (Click to Test)
+| Endpoint | URL | Description |
+|----------|-----|-------------|
+| 📖 **API Docs** | [/docs](https://kasparro-api-im89.onrender.com/docs) | Interactive Swagger UI |
+| ❤️ **Health Check** | [/health](https://kasparro-api-im89.onrender.com/health) | System health status |
+| 📊 **Statistics** | [/api/v1/stats](https://kasparro-api-im89.onrender.com/api/v1/stats) | Data statistics & ETL status |
+| 📈 **Crypto Data** | [/api/v1/data](https://kasparro-api-im89.onrender.com/api/v1/data) | Retrieved cryptocurrency data |
+| 🔧 **ETL Jobs** | [/api/v1/etl/jobs](https://kasparro-api-im89.onrender.com/api/v1/etl/jobs) | ETL job history |
+| 📉 **Metrics** | [/api/v1/metrics](https://kasparro-api-im89.onrender.com/api/v1/metrics) | Prometheus metrics |
+
+### Sample API Calls
+```bash
+# Health check
+curl https://kasparro-api-im89.onrender.com/health
+
+# Get crypto data (with BTC filter)
+curl "https://kasparro-api-im89.onrender.com/api/v1/data?symbol=BTC"
+
+# Trigger ETL job (sync mode)
+curl -X POST "https://kasparro-api-im89.onrender.com/api/v1/etl/run/csv?sync=true"
+```
 
 <img width="2816" height="1536" alt="Gemini_Generated_Image_fob8d0fob8d0fob8" src="https://github.com/user-attachments/assets/a4da84c5-1a9e-48a8-9ef4-c7cfdcb26bc1" />
 
