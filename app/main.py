@@ -4,15 +4,14 @@ from contextlib import asynccontextmanager
 from typing import AsyncGenerator
 
 from fastapi import FastAPI
-from fastapi.responses import RedirectResponse
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.responses import RedirectResponse
 
 from app.api.routes import router
 from app.core.config import settings
 from app.core.logging import logger
 from app.core.middleware import MetricsMiddleware, RequestLoggingMiddleware
 from app.db.session import engine
-from app.db.models import Base
 
 
 @asynccontextmanager

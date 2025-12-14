@@ -3,7 +3,7 @@
 from functools import lru_cache
 from typing import Optional
 
-from pydantic import Field, field_validator, model_validator
+from pydantic import Field, model_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 
@@ -43,13 +43,13 @@ class Settings(BaseSettings):
         print(f"DEBUG: Env DATABASE_URL={os.getenv('DATABASE_URL')}")
         print(f"DEBUG: self.database_url={self.database_url}")
         print(f"DEBUG: self.db_url={self.db_url}")
-        
+
         if self.database_url:
              self.db_url = self.database_url
         elif not self.db_url:
              # Fallback to env var directly if pydantic missed it
              self.db_url = os.getenv("DATABASE_URL")
-             
+
         return self
 
 

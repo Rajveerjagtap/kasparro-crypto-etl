@@ -19,7 +19,6 @@ from app.schemas.crypto import (
     ETLJobSchema,
     ETLStats,
     HealthResponse,
-    PaginatedResponse,
     ResponseMetadata,
     StatsResponse,
     SymbolStats,
@@ -54,7 +53,7 @@ async def get_data(
     if symbol:
         query = query.where(UnifiedCryptoData.symbol == symbol.upper())
         count_query = count_query.where(UnifiedCryptoData.symbol == symbol.upper())
-    
+
     if source:
         query = query.where(UnifiedCryptoData.source == source)
         count_query = count_query.where(UnifiedCryptoData.source == source)
@@ -176,7 +175,7 @@ async def get_stats(db: AsyncSession = Depends(get_db)) -> StatsResponse:
         )
         .group_by(UnifiedCryptoData.symbol)
     )
-    
+
     try:
         stats_result = (await db.execute(stats_query)).fetchall()
     except Exception:
@@ -192,7 +191,7 @@ async def get_stats(db: AsyncSession = Depends(get_db)) -> StatsResponse:
             .group_by(UnifiedCryptoData.symbol)
         )
         stats_result = (await db.execute(stats_query)).fetchall()
-    
+
     symbol_stats = []
     for row in stats_result:
         sources = getattr(row, 'sources', None) or [s.value for s in DataSource]
@@ -211,22 +210,22 @@ async def get_stats(db: AsyncSession = Depends(get_db)) -> StatsResponse:
     etl_jobs_query = select(ETLJob)
     etl_jobs_result = await db.execute(etl_jobs_query)
     etl_jobs = etl_jobs_result.scalars().all()
-    
+
     total_jobs = len(etl_jobs)
     successful_jobs = sum(1 for j in etl_jobs if j.status == ETLStatus.SUCCESS)
     failed_jobs = sum(1 for j in etl_jobs if j.status == ETLStatus.FAILURE)
     total_records_processed = sum(j.records_processed or 0 for j in etl_jobs)
-    
+
     # Get last success/failure timestamps
     last_success = max((j.completed_at for j in etl_jobs if j.status == ETLStatus.SUCCESS and j.completed_at), default=None)
     last_failure = max((j.completed_at for j in etl_jobs if j.status == ETLStatus.FAILURE and j.completed_at), default=None)
-    
+
     # Get last job duration
     last_job = max(etl_jobs, key=lambda j: j.started_at, default=None) if etl_jobs else None
     last_job_duration = None
     if last_job and last_job.completed_at and last_job.started_at:
         last_job_duration = (last_job.completed_at - last_job.started_at).total_seconds()
-    
+
     # Get data freshness
     freshness_query = select(func.max(UnifiedCryptoData.timestamp))
     data_freshness = (await db.execute(freshness_query)).scalar()
@@ -264,8 +263,9 @@ async def get_metrics():
     """
     Expose Prometheus metrics.
     """
-    from app.core.middleware import metrics_collector
     from fastapi.responses import PlainTextResponse
+
+    from app.core.middleware import metrics_collector
     return PlainTextResponse(content=metrics_collector.get_prometheus_output(), media_type="text/plain")
 
 

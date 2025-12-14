@@ -1,8 +1,8 @@
 """Logging configuration."""
 
 import logging
-import sys
 import os
+import sys
 from logging.handlers import RotatingFileHandler
 from typing import Optional
 
@@ -25,7 +25,7 @@ def setup_logging(level: Optional[str] = None) -> logging.Logger:
     log_dir = "logs"
     if not os.path.exists(log_dir):
         os.makedirs(log_dir)
-    
+
     file_handler = RotatingFileHandler(
         filename=f"{log_dir}/kasparro.log",
         maxBytes=10 * 1024 * 1024,  # 10MB

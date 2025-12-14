@@ -8,16 +8,15 @@ Usage:
     python -m app.scheduler
 """
 import asyncio
-import os
-import signal
 import logging
+import os
 from datetime import datetime, timezone
-from apscheduler.schedulers.asyncio import AsyncIOScheduler
-from apscheduler.triggers.cron import CronTrigger
-from apscheduler.events import EVENT_JOB_ERROR, EVENT_JOB_EXECUTED
 
+from apscheduler.events import EVENT_JOB_ERROR, EVENT_JOB_EXECUTED
+from apscheduler.schedulers.asyncio import AsyncIOScheduler
+
+from app.db.models import ETLStatus
 from app.ingestion.service import etl_service
-from app.db.models import DataSource, ETLStatus
 
 # Configure structured logging
 logging.basicConfig(
@@ -31,7 +30,7 @@ class ETLScheduler:
     """
     Robust ETL Scheduler using APScheduler.
     """
-    
+
     def __init__(self):
         self.scheduler = AsyncIOScheduler()
         # Support both seconds (SCHEDULE_INTERVAL) and hours (ETL_INTERVAL_HOURS)
@@ -45,21 +44,21 @@ class ETLScheduler:
         """
         logger.info("Starting scheduled ETL job...")
         start_time = datetime.now(timezone.utc)
-        
+
         try:
             # Run ETL for all sources in parallel
             results = await etl_service.run_all_sources(parallel=True)
-            
+
             # Count successes
             success_count = 0
             for job in results.values():
                 logger.info(f"Job source: {job.source}, status: {job.status} (type: {type(job.status)}), expected: {ETLStatus.SUCCESS}")
                 if job.status == ETLStatus.SUCCESS or str(job.status) == ETLStatus.SUCCESS.value:
                     success_count += 1
-            
+
             # Log summary
             logger.info(f"ETL Job Completed. Success: {success_count}/{len(results)}")
-            
+
         except Exception as e:
             logger.error(f"Critical error in ETL job: {str(e)}", exc_info=True)
         finally:
@@ -80,22 +79,22 @@ class ETLScheduler:
         Start the scheduler and block until interrupted.
         """
         logger.info(f"Initializing Scheduler (Interval: {self.interval_seconds} seconds)")
-        
+
         # Add the ETL job
         # Use IntervalTrigger for robust periodic scheduling
         from apscheduler.triggers.interval import IntervalTrigger
         trigger = IntervalTrigger(seconds=self.interval_seconds)
 
         self.scheduler.add_job(
-            self.run_etl_job, 
-            trigger=trigger, 
+            self.run_etl_job,
+            trigger=trigger,
             id="etl_main_job",
             replace_existing=True
         )
-        
+
         # Add listener
         self.scheduler.add_listener(self.job_listener, EVENT_JOB_EXECUTED | EVENT_JOB_ERROR)
-        
+
         # Start scheduler
         self.scheduler.start()
         logger.info(f"Scheduler started. Next run at: {self.scheduler.get_job('etl_main_job').next_run_time}")
@@ -105,7 +104,7 @@ class ETLScheduler:
             # Run once on startup for immediate feedback in dev/prod
             logger.info("Triggering initial startup run...")
             await self.run_etl_job()
-            
+
             # Wait forever
             while True:
                 await asyncio.sleep(1000)

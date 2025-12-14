@@ -39,14 +39,14 @@ def get_structured_logger(name: str = "kasparro.request") -> StructuredLogger:
     """Create and configure a structured JSON logger."""
     logging.setLoggerClass(StructuredLogger)
     logger = logging.getLogger(name)
-    
+
     if not logger.handlers:
         handler = logging.StreamHandler()
         handler.setFormatter(logging.Formatter("%(message)s"))
         logger.addHandler(handler)
         logger.setLevel(logging.INFO)
         logger.propagate = False
-    
+
     return logger  # type: ignore
 
 
@@ -56,7 +56,7 @@ request_logger = get_structured_logger()
 class RequestLoggingMiddleware(BaseHTTPMiddleware):
     """
     Middleware that logs structured JSON for every HTTP request.
-    
+
     Logs include:
     - timestamp: ISO format timestamp
     - level: INFO or ERROR
@@ -78,23 +78,23 @@ class RequestLoggingMiddleware(BaseHTTPMiddleware):
         request_id = request.headers.get("X-Request-ID")
         if not request_id:
             request_id = str(uuid.uuid4())
-        
+
         # Store request_id in request state for downstream use
         request.state.request_id = request_id
-        
+
         # Record start time
         start_time = time.perf_counter()
-        
+
         # Process request
         response: Response
         status_code: int
         level: str = "INFO"
         error_detail: str | None = None
-        
+
         try:
             response = await call_next(request)
             status_code = response.status_code
-            
+
             if status_code >= 500:
                 level = "ERROR"
             elif status_code >= 400:
@@ -108,7 +108,7 @@ class RequestLoggingMiddleware(BaseHTTPMiddleware):
         finally:
             # Calculate processing time
             process_time_ms = (time.perf_counter() - start_time) * 1000
-            
+
             # Build log entry
             log_data = {
                 "timestamp": time.strftime("%Y-%m-%dT%H:%M:%S%z", time.localtime()),
@@ -119,21 +119,21 @@ class RequestLoggingMiddleware(BaseHTTPMiddleware):
                 "process_time_ms": round(process_time_ms, 2),
                 "request_id": request_id,
             }
-            
+
             # Add query params if present
             if request.url.query:
                 log_data["query"] = request.url.query
-            
+
             # Add error detail if present
             if error_detail:
                 log_data["error"] = error_detail
-            
+
             # Log to stdout as JSON
             print(json.dumps(log_data), flush=True)
-        
+
         # Add request ID to response headers
         response.headers["X-Request-ID"] = request_id
-        
+
         return response
 
 
@@ -143,7 +143,7 @@ class RequestLoggingMiddleware(BaseHTTPMiddleware):
 class MetricsCollector:
     """
     Simple in-memory metrics collector for Prometheus-style output.
-    
+
     Tracks:
     - http_requests_total: Counter by method/status
     - etl_runs_total: Counter by source/status
@@ -172,7 +172,7 @@ class MetricsCollector:
     def get_prometheus_output(self) -> str:
         """Generate Prometheus-compatible metrics output."""
         lines = []
-        
+
         # HTTP requests total
         lines.append("# HELP http_requests_total Total number of HTTP requests")
         lines.append("# TYPE http_requests_total counter")
@@ -180,9 +180,9 @@ class MetricsCollector:
             lines.append(
                 f'http_requests_total{{method="{method}",status="{status}"}} {count}'
             )
-        
+
         lines.append("")
-        
+
         # ETL runs total
         lines.append("# HELP etl_runs_total Total number of ETL runs")
         lines.append("# TYPE etl_runs_total counter")
@@ -190,9 +190,9 @@ class MetricsCollector:
             lines.append(
                 f'etl_runs_total{{source="{source}",status="{status}"}} {count}'
             )
-        
+
         lines.append("")
-        
+
         # ETL last duration
         lines.append("# HELP etl_last_duration_seconds Duration of last ETL run in seconds")
         lines.append("# TYPE etl_last_duration_seconds gauge")
@@ -200,7 +200,7 @@ class MetricsCollector:
             lines.append(
                 f'etl_last_duration_seconds{{source="{source}"}} {duration:.3f}'
             )
-        
+
         return "\n".join(lines)
 
 
@@ -216,11 +216,11 @@ class MetricsMiddleware(BaseHTTPMiddleware):
     ) -> Response:
         """Track HTTP request metrics."""
         response = await call_next(request)
-        
+
         # Don't track metrics endpoint itself to avoid noise
         if request.url.path != "/metrics":
             metrics_collector.increment_http_request(
                 request.method, response.status_code
             )
-        
+
         return response

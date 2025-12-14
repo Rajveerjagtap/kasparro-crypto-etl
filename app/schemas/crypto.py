@@ -2,9 +2,9 @@
 
 import uuid
 from datetime import datetime
-from typing import Any, Generic, Optional, TypeVar
+from typing import Any, Optional, TypeVar
 
-from pydantic import BaseModel, ConfigDict, Field, computed_field
+from pydantic import BaseModel, ConfigDict, Field
 
 from app.db.models import DataSource, ETLStatus
 

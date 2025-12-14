@@ -1,6 +1,6 @@
-from typing import Dict, Optional
 import difflib
 import logging
+from typing import Optional
 
 logger = logging.getLogger(__name__)
 
@@ -8,7 +8,7 @@ class SymbolNormalizer:
     """
     Normalizes crypto symbols using exact matching and fuzzy fallback.
     """
-    
+
     # Canonical mapping: Input -> Canonical Symbol
     # This could be loaded from a DB or config file in production
     CANONICAL_MAP = {
@@ -58,7 +58,7 @@ class SymbolNormalizer:
         # We match against the keys of our map to find the likely intent
         keys = list(self.CANONICAL_MAP.keys())
         matches = difflib.get_close_matches(cleaned, keys, n=1, cutoff=0.8)
-        
+
         if matches:
             match = matches[0]
             canonical = self.CANONICAL_MAP[match]

@@ -5,7 +5,8 @@ import time
 from datetime import datetime, timezone
 from typing import Any, Optional
 
-from sqlalchemy import select, text
+import pandas as pd
+from sqlalchemy import select
 from sqlalchemy.dialects.postgresql import insert
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -15,13 +16,12 @@ from app.core.middleware import metrics_collector
 from app.db.models import DataSource, ETLJob, ETLStatus, RawData, UnifiedCryptoData
 from app.db.session import get_session
 from app.ingestion.base import BaseExtractor
-from app.ingestion.extractors.coinpaprika import CoinPaprikaExtractor
-from app.ingestion.extractors.coingecko import CoinGeckoExtractor
-from app.ingestion.extractors.csv_extractor import CSVExtractor
-from app.schemas.crypto import UnifiedCryptoDataCreate
 from app.ingestion.drift import DriftDetector
+from app.ingestion.extractors.coingecko import CoinGeckoExtractor
+from app.ingestion.extractors.coinpaprika import CoinPaprikaExtractor
+from app.ingestion.extractors.csv_extractor import CSVExtractor
 from app.ingestion.normalization import SymbolNormalizer
-import pandas as pd
+from app.schemas.crypto import UnifiedCryptoDataCreate
 
 
 class ETLService:
@@ -242,7 +242,7 @@ class ETLService:
                 job.status = ETLStatus.SUCCESS
                 job.records_processed = records_processed
                 job.last_processed_timestamp = max_timestamp
-                
+
                 logger.info(f"{source.value}: ETL completed, {records_processed} records processed")
                 metrics_collector.increment_etl_run(source.value, "success")
                 metrics_collector.set_etl_duration(source.value, time.perf_counter() - start_time)
@@ -291,7 +291,7 @@ class ETLService:
             job.records_processed = records_processed
             job.completed_at = datetime.now(timezone.utc)
             job.last_processed_timestamp = last_processed_timestamp
-            
+
             # Truncate error message to fit in DB column (VARCHAR(1000))
             if error_message and len(error_message) > 990:
                 job.error_message = error_message[:990] + "..."

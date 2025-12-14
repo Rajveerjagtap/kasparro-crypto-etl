@@ -33,7 +33,7 @@ jobs:
           pip install -r requirements.txt
 
       - name: Run Ruff linter
-        run: ruff check app/ --ignore=E501
+        run: ruff check app/ --ignore=E501,N818
 
       - name: Run MyPy type checker
         run: mypy app/ --ignore-missing-imports --no-error-summary
@@ -162,11 +162,11 @@ jobs:
 
       - name: Check data endpoint
         run: |
-          curl -f http://localhost:8000/data || exit 1
+          curl -f http://localhost:8000/api/v1/data || exit 1
 
       - name: Check stats endpoint
         run: |
-          curl -f http://localhost:8000/stats || exit 1
+          curl -f http://localhost:8000/api/v1/stats || exit 1
 
       - name: View logs on failure
         if: failure()
