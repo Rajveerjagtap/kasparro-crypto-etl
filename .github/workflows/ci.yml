@@ -149,6 +149,10 @@ jobs:
     name: Integration Test
     runs-on: ubuntu-latest
     needs: [test]
+    env:
+      DB_USER: kasparro
+      DB_PASSWORD: kasparro_password
+      DB_NAME: kasparro_db
     steps:
       - uses: actions/checkout@v4
 

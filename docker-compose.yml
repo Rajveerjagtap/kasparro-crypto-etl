@@ -71,7 +71,7 @@ services:
       - ./app:/code/app
     networks:
       - kasparro_network
-    command: /code/start-scheduler.sh
+    command: python -m app.scheduler
 
 volumes:
   postgres_data:
