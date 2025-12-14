@@ -52,7 +52,6 @@ else
 fi
 
 # Determine which service to start based on command
-# Render overrides CMD with dockerCommand in render.yaml
 if [ $# -eq 0 ]; then
     # Default: Start web server
     echo "Starting Kasparro API server..."

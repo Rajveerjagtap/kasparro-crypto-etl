@@ -129,48 +129,17 @@ make test
 
 ## ☁️ Cloud Deployment
 
-Kasparro is designed for **free-tier cloud deployment** with a public API endpoint and scheduled ETL.
+Kasparro is automatically deployed to Azure using GitHub Actions and Bicep.
 
-### Option 1: Render.com (Recommended)
+### Infrastructure
+- **Azure Container Apps**: Hosts the FastAPI backend and Scheduler worker.
+- **Azure Database for PostgreSQL**: Managed database service.
+- **Azure Container Registry**: Stores Docker images.
+- **Bicep**: Infrastructure as Code (IaC) for reproducible deployments.
 
-The easiest way to deploy with automatic infrastructure setup.
+[![Deploy to Azure](https://aka.ms/deploytoazurebutton)](https://portal.azure.com/#create/Microsoft.Template/uri/https%3A%2F%2Fraw.githubusercontent.com%2FRajveerjagtap%2Fkasparro-crypto-etl%2Fmain%2Fazure%2Fmain.bicep)
 
-**Prerequisites:**
-- GitHub account
-- Render.com account (free)
-
-**Steps:**
-
-1. **Push to GitHub:**
-   ```bash
-   git add -A
-   git commit -m "Deploy to cloud"
-   git push origin main
-   ```
-
-2. **Deploy to Render:**
-   - Go to [render.com](https://render.com) and sign up
-   - Click **New** → **Blueprint**
-   - Connect your GitHub repository
-   - Render auto-detects `render.yaml` and creates:
-     - ✅ PostgreSQL database (free tier)
-     - ✅ Web service (public API at `https://kasparro-api.onrender.com`)
-     - ✅ Background worker (scheduled ETL every hour)
-
-3. **Verify deployment:**
-   ```bash
-   curl https://kasparro-api-im89.onrender.com/health
-   curl https://kasparro-api-im89.onrender.com/api/v1/data
-   ```
-
-**Services Created:**
-| Service | Type | Description |
-|---------|------|-------------|
-| `kasparro-db` | PostgreSQL | Free tier database |
-| `kasparro-api` | Web Service | Public FastAPI endpoint |
-| `kasparro-scheduler` | Background Worker | Hourly ETL cron job |
-
-### Option 2: Manual Docker Deployment
+### Option 1: Manual Docker Deployment
 
 Deploy to any Docker-compatible host (AWS ECS, DigitalOcean, etc.):
 
@@ -228,12 +197,11 @@ make schedule-docker
 To verify the deployment status and ETL execution:
 
 ### 1. Check Deployment Status
-Visit the [Render Dashboard](https://dashboard.render.com) to view the status of your services.
-- **Web Service**: Should be "Live"
-- **Worker Service**: Should be "Live"
+Visit the [Azure Portal](https://portal.azure.com) to view the status of your services.
+- **Container App**: Should be "Running"
 
 ### 2. Verify ETL Execution Logs
-Access the logs for the `kasparro-scheduler` worker service:
+Access the logs for the container app in Azure Portal:
 ```bash
 # Example log output indicating successful ETL run
 INFO:kasparro.scheduler:Scheduler started - running ETL every 3600 seconds
@@ -248,7 +216,7 @@ INFO:kasparro.scheduler:Scheduled ETL job completed successfully
 ### 3. Verify Metrics
 Check the `/metrics` endpoint for Prometheus metrics:
 ```bash
-curl https://kasparro-api-im89.onrender.com/api/v1/metrics
+curl https://kasparro-backend.thankfulwave-f9a1a1b4.eastus2.azurecontainerapps.io/api/v1/metrics
 # Expected output includes:
 # kasparro_etl_jobs_total{source="coingecko",status="success"} 12.0
 # kasparro_etl_records_processed_total{source="coingecko"} 600.0
@@ -257,21 +225,9 @@ curl https://kasparro-api-im89.onrender.com/api/v1/metrics
 ### 4. Verify Data Freshness
 Query the stats endpoint to see the latest ingestion timestamps:
 ```bash
-curl https://kasparro-api-im89.onrender.com/api/v1/stats
+curl https://kasparro-backend.thankfulwave-f9a1a1b4.eastus2.azurecontainerapps.io/api/v1/stats
 ```
 Response should show recent `last_processed` timestamps.
-
-## ☁️ Azure Deployment
-
-This project is automatically deployed to Azure using GitHub Actions and Bicep.
-
-### Infrastructure
-- **Azure Container Apps**: Hosts the FastAPI backend and Scheduler worker.
-- **Azure Database for PostgreSQL**: Managed database service.
-- **Azure Container Registry**: Stores Docker images.
-- **Bicep**: Infrastructure as Code (IaC) for reproducible deployments.
-
-[![Deploy to Azure](https://aka.ms/deploytoazurebutton)](https://portal.azure.com/#create/Microsoft.Template/uri/https%3A%2F%2Fraw.githubusercontent.com%2FRajveerjagtap%2Fkasparro-crypto-etl%2Fmain%2Fazure%2Fmain.bicep)
 
 ## License
 

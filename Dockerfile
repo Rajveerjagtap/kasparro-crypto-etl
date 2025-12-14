@@ -47,12 +47,9 @@ COPY alembic/ ./alembic/
 COPY alembic.ini .
 COPY data/ ./data/
 COPY entrypoint.sh .
-COPY db-wait.sh .
-COPY start-web.sh .
-COPY start-scheduler.sh .
 
 # Make scripts executable
-RUN chmod +x /code/entrypoint.sh /code/db-wait.sh /code/start-web.sh /code/start-scheduler.sh
+RUN chmod +x /code/entrypoint.sh
 
 EXPOSE 8000
 
