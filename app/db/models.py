@@ -94,7 +94,7 @@ class UnifiedCryptoData(Base):
     )
 
     __table_args__ = (
-        UniqueConstraint("symbol", "source", "timestamp", name="uq_symbol_source_timestamp"),
+        UniqueConstraint("symbol", "timestamp", name="uq_symbol_timestamp"),
         Index("ix_unified_symbol_source", "symbol", "source"),
         Index("ix_unified_timestamp", "timestamp"),
     )

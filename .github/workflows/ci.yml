@@ -36,7 +36,7 @@ jobs:
         run: ruff check app/ --ignore=E501
 
       - name: Run MyPy type checker
-        run: mypy app/ --ignore-missing-imports --no-error-summary || true
+        run: mypy app/ --ignore-missing-imports --no-error-summary
 
   # ============== Unit Tests ==============
   test:
@@ -175,3 +175,38 @@ jobs:
       - name: Cleanup
         if: always()
         run: docker-compose down -v
+
+  # ============== Deploy to Azure ==============
+  azure-deploy:
+    name: Deploy to Azure
+    runs-on: ubuntu-latest
+    needs: [integration, publish]
+    if: github.ref == 'refs/heads/main' && github.event_name == 'push'
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Azure Login
+        uses: azure/login@v1
+        with:
+          creds: ${{ secrets.AZURE_CREDENTIALS }}
+
+      - name: Deploy Infrastructure
+        uses: azure/arm-deploy@v1
+        id: deploy
+        with:
+          subscriptionId: ${{ secrets.AZURE_SUBSCRIPTION_ID }}
+          resourceGroupName: kasparro-rg-eastus2
+          template: ./azure/main.bicep
+          parameters: dbPassword=${{ secrets.DB_PASSWORD }}
+          failOnStdErr: false
+
+      - name: Build and Push to ACR
+        run: |
+          ACR_NAME=${{ steps.deploy.outputs.acrName }}
+          az acr build --registry $ACR_NAME --image kasparro:latest .
+
+      - name: Update Container Apps
+        run: |
+          ACR_LOGIN_SERVER=${{ steps.deploy.outputs.acrLoginServer }}
+          az containerapp update --name kasparro-backend --resource-group kasparro-rg-eastus2 --image $ACR_LOGIN_SERVER/kasparro:latest
+          az containerapp update --name kasparro-scheduler --resource-group kasparro-rg-eastus2 --image $ACR_LOGIN_SERVER/kasparro:latest

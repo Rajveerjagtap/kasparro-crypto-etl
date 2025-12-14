@@ -223,6 +223,44 @@ make schedule-docker
 | `SCHEDULE_INTERVAL` | ETL interval in seconds | `3600` (1 hour) |
 | `LOG_LEVEL` | Logging level | `INFO` |
 
+## Deployment Verification
+
+To verify the deployment status and ETL execution:
+
+### 1. Check Deployment Status
+Visit the [Render Dashboard](https://dashboard.render.com) to view the status of your services.
+- **Web Service**: Should be "Live"
+- **Worker Service**: Should be "Live"
+
+### 2. Verify ETL Execution Logs
+Access the logs for the `kasparro-scheduler` worker service:
+```bash
+# Example log output indicating successful ETL run
+INFO:kasparro.scheduler:Scheduler started - running ETL every 3600 seconds
+INFO:kasparro.scheduler:Starting scheduled ETL job...
+INFO:kasparro.ingestion.service:Starting ETL for source: coingecko
+INFO:kasparro.ingestion.service:coingecko: ETL completed, 50 records processed
+INFO:kasparro.ingestion.service:Starting ETL for source: coinpaprika
+INFO:kasparro.ingestion.service:coinpaprika: ETL completed, 50 records processed
+INFO:kasparro.scheduler:Scheduled ETL job completed successfully
+```
+
+### 3. Verify Metrics
+Check the `/metrics` endpoint for Prometheus metrics:
+```bash
+curl https://kasparro-api-im89.onrender.com/api/v1/metrics
+# Expected output includes:
+# kasparro_etl_jobs_total{source="coingecko",status="success"} 12.0
+# kasparro_etl_records_processed_total{source="coingecko"} 600.0
+```
+
+### 4. Verify Data Freshness
+Query the stats endpoint to see the latest ingestion timestamps:
+```bash
+curl https://kasparro-api-im89.onrender.com/api/v1/stats
+```
+Response should show recent `last_processed` timestamps.
+
 ## License
 
 MIT

@@ -1,20 +1,23 @@
 """
-scheduler.py - Cloud-based Scheduled ETL Runner
+scheduler.py - Robust ETL Scheduler using APScheduler
 
 Implements scheduled ETL jobs for cryptocurrency data ingestion.
-Runs continuously in production, executing ETL jobs on a configurable schedule.
+Uses APScheduler for robust cron-style scheduling and execution.
 
 Usage:
-    python -m app.scheduler           # Run scheduler (default: hourly)
-    SCHEDULE_INTERVAL=1800 python -m app.scheduler  # Run every 30 minutes
+    python -m app.scheduler
 """
 import asyncio
 import os
-import sys
 import signal
 import logging
 from datetime import datetime, timezone
-from typing import Optional
+from apscheduler.schedulers.asyncio import AsyncIOScheduler
+from apscheduler.triggers.cron import CronTrigger
+from apscheduler.events import EVENT_JOB_ERROR, EVENT_JOB_EXECUTED
+
+from app.ingestion.service import etl_service
+from app.db.models import DataSource, ETLStatus
 
 # Configure structured logging
 logging.basicConfig(
@@ -24,191 +27,95 @@ logging.basicConfig(
 )
 logger = logging.getLogger("kasparro.scheduler")
 
-
 class ETLScheduler:
     """
-    Async ETL Scheduler for cloud deployment.
-    
-    Runs ETL jobs on a configurable interval using asyncio.
-    Designed for deployment as a background worker on Render, Railway, etc.
+    Robust ETL Scheduler using APScheduler.
     """
     
-    def __init__(self, interval_seconds: int = 3600):
-        """
-        Initialize scheduler.
-        
-        Args:
-            interval_seconds: Time between ETL runs (default: 3600 = 1 hour)
-        """
-        self.interval = interval_seconds
-        self.running = False
-        self.current_task: Optional[asyncio.Task] = None
-        self._shutdown_event = asyncio.Event()
-        
-    async def run_etl_job(self) -> dict:
+    def __init__(self):
+        self.scheduler = AsyncIOScheduler()
+        # Support both seconds (SCHEDULE_INTERVAL) and hours (ETL_INTERVAL_HOURS)
+        self.interval_seconds = int(os.getenv("SCHEDULE_INTERVAL", "3600"))
+        if "ETL_INTERVAL_HOURS" in os.environ:
+            self.interval_seconds = int(os.getenv("ETL_INTERVAL_HOURS")) * 3600
+
+    async def run_etl_job(self):
         """
         Execute a complete ETL cycle for all sources.
-        
-        Returns:
-            dict: Summary of ETL job results
         """
-        from app.db.session import async_session_maker
-        from app.etl.service import ETLService
+        logger.info("Starting scheduled ETL job...")
+        start_time = datetime.now(timezone.utc)
         
-        results = {
-            "started_at": datetime.now(timezone.utc).isoformat(),
-            "sources": {},
-            "status": "success",
-        }
-        
-        sources = ["coingecko", "coinpaprika"]
-        
-        async with async_session_maker() as session:
-            service = ETLService(session)
+        try:
+            # Run ETL for all sources in parallel
+            results = await etl_service.run_all_sources(parallel=True)
             
-            for source in sources:
-                try:
-                    logger.info(f"Starting ETL for source: {source}")
-                    job_result = await service.run_full_etl(source=source)
-                    results["sources"][source] = {
-                        "status": "success",
-                        "job_id": job_result.get("job_id"),
-                        "records_processed": job_result.get("records_processed", 0),
-                    }
-                    logger.info(
-                        f"ETL completed for {source}: "
-                        f"{job_result.get('records_processed', 0)} records"
-                    )
-                except Exception as e:
-                    logger.error(f"ETL failed for {source}: {str(e)}")
-                    results["sources"][source] = {
-                        "status": "failed",
-                        "error": str(e),
-                    }
-                    results["status"] = "partial_failure"
+            # Count successes
+            success_count = 0
+            for job in results.values():
+                logger.info(f"Job source: {job.source}, status: {job.status} (type: {type(job.status)}), expected: {ETLStatus.SUCCESS}")
+                if job.status == ETLStatus.SUCCESS or str(job.status) == ETLStatus.SUCCESS.value:
+                    success_count += 1
+            
+            # Log summary
+            logger.info(f"ETL Job Completed. Success: {success_count}/{len(results)}")
+            
+        except Exception as e:
+            logger.error(f"Critical error in ETL job: {str(e)}", exc_info=True)
+        finally:
+            duration = (datetime.now(timezone.utc) - start_time).total_seconds()
+            logger.info(f"ETL cycle finished in {duration:.2f}s")
+
+    def job_listener(self, event):
+        """
+        Listener for job events (success/failure).
+        """
+        if event.exception:
+            logger.error(f"Job {event.job_id} failed: {event.exception}")
+        else:
+            logger.info(f"Job {event.job_id} executed successfully")
+
+    async def start(self):
+        """
+        Start the scheduler and block until interrupted.
+        """
+        logger.info(f"Initializing Scheduler (Interval: {self.interval_seconds} seconds)")
         
-        results["finished_at"] = datetime.now(timezone.utc).isoformat()
-        return results
-    
-    async def _scheduler_loop(self):
-        """Main scheduler loop."""
-        logger.info(
-            f"Scheduler started - running ETL every {self.interval} seconds "
-            f"({self.interval / 3600:.1f} hours)"
+        # Add the ETL job
+        # Use IntervalTrigger for robust periodic scheduling
+        from apscheduler.triggers.interval import IntervalTrigger
+        trigger = IntervalTrigger(seconds=self.interval_seconds)
+
+        self.scheduler.add_job(
+            self.run_etl_job, 
+            trigger=trigger, 
+            id="etl_main_job",
+            replace_existing=True
         )
         
-        # Run immediately on startup
+        # Add listener
+        self.scheduler.add_listener(self.job_listener, EVENT_JOB_EXECUTED | EVENT_JOB_ERROR)
+        
+        # Start scheduler
+        self.scheduler.start()
+        logger.info(f"Scheduler started. Next run at: {self.scheduler.get_job('etl_main_job').next_run_time}")
+
+        # Keep alive
         try:
-            logger.info("Running initial ETL on startup...")
-            result = await self.run_etl_job()
-            logger.info(f"Initial ETL complete: {result['status']}")
-        except Exception as e:
-            logger.error(f"Initial ETL failed: {e}")
-        
-        # Then run on schedule
-        while self.running:
-            try:
-                # Wait for interval or shutdown signal
-                try:
-                    await asyncio.wait_for(
-                        self._shutdown_event.wait(),
-                        timeout=self.interval
-                    )
-                    # If we get here, shutdown was requested
-                    break
-                except asyncio.TimeoutError:
-                    # Timeout means interval elapsed, run ETL
-                    pass
-                
-                if not self.running:
-                    break
-                    
-                logger.info("Scheduled ETL run starting...")
-                result = await self.run_etl_job()
-                logger.info(f"Scheduled ETL complete: {result['status']}")
-                
-            except asyncio.CancelledError:
-                logger.info("Scheduler loop cancelled")
-                break
-            except Exception as e:
-                logger.error(f"Scheduler error: {e}")
-                # Continue running despite errors
-                await asyncio.sleep(60)  # Brief pause before retry
-        
-        logger.info("Scheduler loop ended")
-    
-    async def start(self):
-        """Start the scheduler."""
-        if self.running:
-            logger.warning("Scheduler already running")
-            return
+            # Run once on startup for immediate feedback in dev/prod
+            logger.info("Triggering initial startup run...")
+            await self.run_etl_job()
             
-        self.running = True
-        self._shutdown_event.clear()
-        self.current_task = asyncio.create_task(self._scheduler_loop())
-        logger.info("Scheduler started")
-    
-    async def stop(self):
-        """Stop the scheduler gracefully."""
-        if not self.running:
-            return
-            
-        logger.info("Stopping scheduler...")
-        self.running = False
-        self._shutdown_event.set()
-        
-        if self.current_task:
-            self.current_task.cancel()
-            try:
-                await self.current_task
-            except asyncio.CancelledError:
-                pass
-        
-        logger.info("Scheduler stopped")
-    
-    async def run_forever(self):
-        """Run scheduler until interrupted."""
-        await self.start()
-        
-        # Wait for shutdown signal
-        try:
-            await self._shutdown_event.wait()
-        except asyncio.CancelledError:
-            pass
-        finally:
-            await self.stop()
-
-
-async def main():
-    """Main entry point for the scheduler."""
-    # Get interval from environment (default: 1 hour)
-    interval = int(os.getenv("SCHEDULE_INTERVAL", "3600"))
-    
-    scheduler = ETLScheduler(interval_seconds=interval)
-    
-    # Setup signal handlers for graceful shutdown
-    loop = asyncio.get_running_loop()
-    
-    def signal_handler():
-        logger.info("Received shutdown signal")
-        scheduler._shutdown_event.set()
-    
-    for sig in (signal.SIGTERM, signal.SIGINT):
-        loop.add_signal_handler(sig, signal_handler)
-    
-    logger.info("=" * 60)
-    logger.info("Kasparro ETL Scheduler")
-    logger.info(f"Schedule Interval: {interval} seconds ({interval/3600:.1f} hours)")
-    logger.info("=" * 60)
-    
-    await scheduler.run_forever()
-    
-    logger.info("Scheduler shutdown complete")
-
+            # Wait forever
+            while True:
+                await asyncio.sleep(1000)
+        except (KeyboardInterrupt, asyncio.CancelledError):
+            logger.info("Stopping scheduler...")
+            self.scheduler.shutdown()
 
 if __name__ == "__main__":
+    scheduler = ETLScheduler()
     try:
-        asyncio.run(main())
-    except KeyboardInterrupt:
-        logger.info("Interrupted by user")
-        sys.exit(0)
+        asyncio.run(scheduler.start())
+    except (KeyboardInterrupt, SystemExit):
+        pass

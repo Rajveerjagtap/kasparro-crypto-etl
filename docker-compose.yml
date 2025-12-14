@@ -3,15 +3,15 @@ services:
     image: postgres:15-alpine
     container_name: kasparro_db
     environment:
-      POSTGRES_USER: kasparro
-      POSTGRES_PASSWORD: kasparro
-      POSTGRES_DB: kasparro_db
+      POSTGRES_USER: ${DB_USER}
+      POSTGRES_PASSWORD: ${DB_PASSWORD}
+      POSTGRES_DB: ${DB_NAME}
     ports:
       - "5433:5432"
     volumes:
       - postgres_data:/var/lib/postgresql/data
     healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U kasparro -d kasparro_db"]
+      test: ["CMD-SHELL", "pg_isready -U ${DB_USER} -d ${DB_NAME}"]
       interval: 5s
       timeout: 5s
       retries: 5
@@ -24,12 +24,12 @@ services:
       dockerfile: Dockerfile
     container_name: kasparro_backend
     environment:
-      - DATABASE_URL=postgresql+asyncpg://kasparro:kasparro@db:5432/kasparro_db
+      - DATABASE_URL=postgresql+asyncpg://${DB_USER}:${DB_PASSWORD}@db:5432/${DB_NAME}
       - DB_HOST=db
       - DB_PORT=5432
-      - DB_USER=kasparro
-      - DB_PASSWORD=kasparro
-      - DB_NAME=kasparro_db
+      - DB_USER=${DB_USER}
+      - DB_PASSWORD=${DB_PASSWORD}
+      - DB_NAME=${DB_NAME}
       - APP_NAME=Kasparro
       - DEBUG=false
       - LOG_LEVEL=INFO
@@ -40,8 +40,38 @@ services:
         condition: service_healthy
     volumes:
       - ./data:/code/data
+      - ./app:/code/app
+      - ./tests:/code/tests
     networks:
       - kasparro_network
+
+  scheduler:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: kasparro_scheduler
+    environment:
+      - DATABASE_URL=postgresql+asyncpg://${DB_USER}:${DB_PASSWORD}@db:5432/${DB_NAME}
+      - DB_HOST=db
+      - DB_PORT=5432
+      - DB_USER=${DB_USER}
+      - DB_PASSWORD=${DB_PASSWORD}
+      - DB_NAME=${DB_NAME}
+      - APP_NAME=Kasparro
+      - DEBUG=false
+      - LOG_LEVEL=INFO
+      - SCHEDULE_INTERVAL=3600
+    depends_on:
+      db:
+        condition: service_healthy
+      backend:
+        condition: service_started
+    volumes:
+      - ./data:/code/data
+      - ./app:/code/app
+    networks:
+      - kasparro_network
+    command: /code/start-scheduler.sh
 
 volumes:
   postgres_data:

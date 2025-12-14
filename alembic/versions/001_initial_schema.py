@@ -59,7 +59,7 @@ def upgrade() -> None:
             source data_source_enum NOT NULL,
             ingested_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
             timestamp TIMESTAMPTZ NOT NULL,
-            CONSTRAINT uq_crypto_symbol_source_timestamp UNIQUE (symbol, source, timestamp)
+            CONSTRAINT uq_crypto_symbol_timestamp UNIQUE (symbol, timestamp)
         )
     """)
     op.execute("CREATE INDEX IF NOT EXISTS ix_unified_crypto_data_symbol ON unified_crypto_data(symbol)")

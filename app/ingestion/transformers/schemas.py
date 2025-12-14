@@ -5,6 +5,8 @@ from typing import Any, Optional
 
 from pydantic import BaseModel, Field, field_validator
 
+from app.core.logging import logger
+
 
 class RawCryptoRecord(BaseModel):
     """Intermediate schema for validating raw crypto data before normalization."""
@@ -32,6 +34,7 @@ class RawCryptoRecord(BaseModel):
         try:
             return float(v)
         except (ValueError, TypeError):
+            logger.warning(f"Failed to coerce value '{v}' to float")
             return None
 
     @field_validator("timestamp", mode="before")

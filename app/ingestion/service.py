@@ -1,6 +1,7 @@
 """ETL Service - Orchestrates extraction, transformation, and loading."""
 
 import asyncio
+import time
 from datetime import datetime, timezone
 from typing import Any, Optional
 
@@ -10,6 +11,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.exceptions import DatabaseException, ExtractionException
 from app.core.logging import logger
+from app.core.middleware import metrics_collector
 from app.db.models import DataSource, ETLJob, ETLStatus, RawData, UnifiedCryptoData
 from app.db.session import get_session
 from app.ingestion.base import BaseExtractor
@@ -17,6 +19,9 @@ from app.ingestion.extractors.coinpaprika import CoinPaprikaExtractor
 from app.ingestion.extractors.coingecko import CoinGeckoExtractor
 from app.ingestion.extractors.csv_extractor import CSVExtractor
 from app.schemas.crypto import UnifiedCryptoDataCreate
+from app.ingestion.drift import DriftDetector
+from app.ingestion.normalization import SymbolNormalizer
+import pandas as pd
 
 
 class ETLService:
@@ -33,6 +38,13 @@ class ETLService:
 
     def __init__(self):
         self._extractors: dict[DataSource, BaseExtractor] = {}
+        # Initialize drift detectors per source
+        self.drift_detectors = {
+            DataSource.COINPAPRIKA: DriftDetector(expected_columns=["id", "symbol", "name", "quotes"]),
+            DataSource.COINGECKO: DriftDetector(expected_columns=["id", "symbol", "name", "current_price"]),
+            DataSource.CSV: DriftDetector(expected_columns=["ticker", "price", "vol", "date"]),
+        }
+        self.symbol_normalizer = SymbolNormalizer()
 
     def get_extractor(self, source: DataSource) -> BaseExtractor:
         """Get or create extractor instance for source."""
@@ -104,11 +116,23 @@ class ETLService:
     ) -> int:
         """
         Insert or update unified crypto data using ON CONFLICT DO UPDATE.
-        Prevents duplicates based on (symbol, source, timestamp).
+        Prevents duplicates based on (symbol, timestamp).
         Returns count of affected records.
         """
         if not records:
             return 0
+
+        # Deduplicate records by (symbol, timestamp) to avoid CardinalityViolationError
+        # Last record wins
+        unique_records = {
+            (r.symbol, r.timestamp): r for r in records
+        }
+        deduplicated_records = list(unique_records.values())
+
+        if len(deduplicated_records) < len(records):
+            logger.warning(
+                f"Dropped {len(records) - len(deduplicated_records)} duplicate records before upsert."
+            )
 
         # Build values for bulk upsert
         values = [
@@ -121,19 +145,20 @@ class ETLService:
                 "timestamp": r.timestamp,
                 "ingested_at": datetime.now(timezone.utc),
             }
-            for r in records
+            for r in deduplicated_records
         ]
 
         # PostgreSQL upsert using INSERT ... ON CONFLICT
         stmt = insert(UnifiedCryptoData).values(values)
 
-        # Update on conflict: (symbol, source, timestamp)
+        # Update on conflict: (symbol, timestamp)
         stmt = stmt.on_conflict_do_update(
-            index_elements=["symbol", "source", "timestamp"],
+            index_elements=["symbol", "timestamp"],
             set_={
                 "price_usd": stmt.excluded.price_usd,
                 "market_cap": stmt.excluded.market_cap,
                 "volume_24h": stmt.excluded.volume_24h,
+                "source": stmt.excluded.source,
                 "ingested_at": stmt.excluded.ingested_at,
             },
         )
@@ -150,6 +175,7 @@ class ETLService:
         Execute ETL pipeline for a single source.
         Wraps in transaction - rolls back on failure.
         """
+        start_time = time.perf_counter()
         async with get_session() as session:
             job = await self.create_etl_job(session, source)
             await session.commit()
@@ -172,7 +198,30 @@ class ETLService:
                     await self._update_job_status(
                         job.id, ETLStatus.SUCCESS, 0, None
                     )
+                    job.status = ETLStatus.SUCCESS
+                    metrics_collector.increment_etl_run(source.value, "success")
+                    metrics_collector.set_etl_duration(source.value, time.perf_counter() - start_time)
                     return job
+
+                # --- Data Drift Detection ---
+                if raw_data:
+                    try:
+                        df_raw = pd.DataFrame(raw_data)
+                        # Use source-specific detector
+                        detector = self.drift_detectors.get(source)
+                        if detector:
+                            detector.detect_drift(df_raw)
+                        else:
+                            logger.warning(f"No drift detector configured for {source.value}")
+                    except Exception as e:
+                        logger.warning(f"Drift detection skipped/failed: {e}")
+
+                # --- Fuzzy Mapping / Normalization ---
+                for record in normalized_data:
+                    normalized_symbol = self.symbol_normalizer.normalize(record.symbol)
+                    if normalized_symbol:
+                        record.symbol = normalized_symbol
+                    # If normalization fails, we keep the original symbol (or could skip/log)
 
                 # Save raw data for audit
                 await self.save_raw_data(session, source, raw_data)
@@ -189,7 +238,14 @@ class ETLService:
                     job.id, ETLStatus.SUCCESS, records_processed, max_timestamp
                 )
 
+                # Update local object for return
+                job.status = ETLStatus.SUCCESS
+                job.records_processed = records_processed
+                job.last_processed_timestamp = max_timestamp
+                
                 logger.info(f"{source.value}: ETL completed, {records_processed} records processed")
+                metrics_collector.increment_etl_run(source.value, "success")
+                metrics_collector.set_etl_duration(source.value, time.perf_counter() - start_time)
                 return job
 
         except ExtractionException as e:
@@ -197,6 +253,10 @@ class ETLService:
             await self._update_job_status(
                 job.id, ETLStatus.FAILURE, 0, None, e.message
             )
+            job.status = ETLStatus.FAILURE
+            job.error_message = e.message
+            metrics_collector.increment_etl_run(source.value, "failure")
+            metrics_collector.set_etl_duration(source.value, time.perf_counter() - start_time)
             raise
 
         except Exception as e:
@@ -204,6 +264,10 @@ class ETLService:
             await self._update_job_status(
                 job.id, ETLStatus.FAILURE, 0, None, str(e)
             )
+            job.status = ETLStatus.FAILURE
+            job.error_message = str(e)
+            metrics_collector.increment_etl_run(source.value, "failure")
+            metrics_collector.set_etl_duration(source.value, time.perf_counter() - start_time)
             raise DatabaseException(
                 message=f"ETL failed for {source.value}",
                 details={"error": str(e)},
@@ -227,7 +291,12 @@ class ETLService:
             job.records_processed = records_processed
             job.completed_at = datetime.now(timezone.utc)
             job.last_processed_timestamp = last_processed_timestamp
-            job.error_message = error_message
+            
+            # Truncate error message to fit in DB column (VARCHAR(1000))
+            if error_message and len(error_message) > 990:
+                job.error_message = error_message[:990] + "..."
+            else:
+                job.error_message = error_message
 
             await session.commit()
 

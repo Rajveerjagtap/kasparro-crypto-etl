@@ -3,7 +3,7 @@
 from functools import lru_cache
 from typing import Optional
 
-from pydantic import field_validator
+from pydantic import Field, field_validator, model_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 
@@ -14,11 +14,12 @@ class Settings(BaseSettings):
         env_file=".env",
         env_file_encoding="utf-8",
         case_sensitive=False,
+        extra="ignore",
     )
 
     # Database - supports both DATABASE_URL and DB_URL
     database_url: Optional[str] = None
-    db_url: str = "postgresql+asyncpg://postgres:postgres@localhost:5432/kasparro"
+    db_url: Optional[str] = Field(default=None, validate_default=False)
     db_pool_size: int = 10
     db_max_overflow: int = 20
 
@@ -35,14 +36,21 @@ class Settings(BaseSettings):
     batch_size: int = 100
     csv_data_path: str = "data/crypto_data.csv"
 
-    @field_validator("db_url", mode="before")
-    @classmethod
-    def use_database_url_if_set(cls, v, info):
+    @model_validator(mode="after")
+    def set_db_url(self):
         """Prefer DATABASE_URL over DB_URL if set."""
-        database_url = info.data.get("database_url")
-        if database_url:
-            return database_url
-        return v
+        import os
+        print(f"DEBUG: Env DATABASE_URL={os.getenv('DATABASE_URL')}")
+        print(f"DEBUG: self.database_url={self.database_url}")
+        print(f"DEBUG: self.db_url={self.db_url}")
+        
+        if self.database_url:
+             self.db_url = self.database_url
+        elif not self.db_url:
+             # Fallback to env var directly if pydantic missed it
+             self.db_url = os.getenv("DATABASE_URL")
+             
+        return self
 
 
 @lru_cache
