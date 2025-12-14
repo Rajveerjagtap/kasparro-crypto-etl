@@ -4,28 +4,28 @@ A production-grade ETL and Backend system for ingesting cryptocurrency data from
 
 ## 🚀 Live Demo
 
-**🌐 Base URL:** [`https://kasparro-api-im89.onrender.com`](https://kasparro-api-im89.onrender.com)
+**🌐 Base URL:** [`https://kasparro-backend.thankfulwave-f9a1a1b4.eastus2.azurecontainerapps.io`](https://kasparro-backend.thankfulwave-f9a1a1b4.eastus2.azurecontainerapps.io)
 
 ### Quick Verification (Click to Test)
 | Endpoint | URL | Description |
 |----------|-----|-------------|
-| 📖 **API Docs** | [/docs](https://kasparro-api-im89.onrender.com/docs) | Interactive Swagger UI |
-| ❤️ **Health Check** | [/health](https://kasparro-api-im89.onrender.com/health) | System health status |
-| 📊 **Statistics** | [/api/v1/stats](https://kasparro-api-im89.onrender.com/api/v1/stats) | Data statistics & ETL status |
-| 📈 **Crypto Data** | [/api/v1/data](https://kasparro-api-im89.onrender.com/api/v1/data) | Retrieved cryptocurrency data |
-| 🔧 **ETL Jobs** | [/api/v1/etl/jobs](https://kasparro-api-im89.onrender.com/api/v1/etl/jobs) | ETL job history |
-| 📉 **Metrics** | [/api/v1/metrics](https://kasparro-api-im89.onrender.com/api/v1/metrics) | Prometheus metrics |
+| 📖 **API Docs** | [/docs](https://kasparro-backend.thankfulwave-f9a1a1b4.eastus2.azurecontainerapps.io/docs) | Interactive Swagger UI |
+| ❤️ **Health Check** | [/health](https://kasparro-backend.thankfulwave-f9a1a1b4.eastus2.azurecontainerapps.io/health) | System health status |
+| 📊 **Statistics** | [/api/v1/stats](https://kasparro-backend.thankfulwave-f9a1a1b4.eastus2.azurecontainerapps.io/api/v1/stats) | Data statistics & ETL status |
+| 📈 **Crypto Data** | [/api/v1/data](https://kasparro-backend.thankfulwave-f9a1a1b4.eastus2.azurecontainerapps.io/api/v1/data) | Retrieved cryptocurrency data |
+| 🔧 **ETL Jobs** | [/api/v1/etl/jobs](https://kasparro-backend.thankfulwave-f9a1a1b4.eastus2.azurecontainerapps.io/api/v1/etl/jobs) | ETL job history |
+| 📉 **Metrics** | [/api/v1/metrics](https://kasparro-backend.thankfulwave-f9a1a1b4.eastus2.azurecontainerapps.io/api/v1/metrics) | Prometheus metrics |
 
 ### Sample API Calls
 ```bash
 # Health check
-curl https://kasparro-api-im89.onrender.com/health
+curl https://kasparro-backend.thankfulwave-f9a1a1b4.eastus2.azurecontainerapps.io/health
 
 # Get crypto data (with BTC filter)
-curl "https://kasparro-api-im89.onrender.com/api/v1/data?symbol=BTC"
+curl "https://kasparro-backend.thankfulwave-f9a1a1b4.eastus2.azurecontainerapps.io/api/v1/data?symbol=BTC"
 
 # Trigger ETL job (sync mode)
-curl -X POST "https://kasparro-api-im89.onrender.com/api/v1/etl/run/csv?sync=true"
+curl -X POST "https://kasparro-backend.thankfulwave-f9a1a1b4.eastus2.azurecontainerapps.io/api/v1/etl/run/csv?sync=true"
 ```
 
 <img width="2816" height="1536" alt="Gemini_Generated_Image_fob8d0fob8d0fob8" src="https://github.com/user-attachments/assets/a4da84c5-1a9e-48a8-9ef4-c7cfdcb26bc1" />
@@ -260,6 +260,18 @@ Query the stats endpoint to see the latest ingestion timestamps:
 curl https://kasparro-api-im89.onrender.com/api/v1/stats
 ```
 Response should show recent `last_processed` timestamps.
+
+## ☁️ Azure Deployment
+
+This project is automatically deployed to Azure using GitHub Actions and Bicep.
+
+### Infrastructure
+- **Azure Container Apps**: Hosts the FastAPI backend and Scheduler worker.
+- **Azure Database for PostgreSQL**: Managed database service.
+- **Azure Container Registry**: Stores Docker images.
+- **Bicep**: Infrastructure as Code (IaC) for reproducible deployments.
+
+[![Deploy to Azure](https://aka.ms/deploytoazurebutton)](https://portal.azure.com/#create/Microsoft.Template/uri/https%3A%2F%2Fraw.githubusercontent.com%2FRajveerjagtap%2Fkasparro-crypto-etl%2Fmain%2Fazure%2Fmain.bicep)
 
 ## License
 
