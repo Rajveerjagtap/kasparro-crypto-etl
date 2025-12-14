@@ -11,8 +11,11 @@ from sqlalchemy.ext.asyncio import (
 
 from app.core.config import settings
 
+# Ensure db_url is set, use a default for testing if not
+_db_url = settings.db_url or "sqlite+aiosqlite:///./test.db"
+
 engine = create_async_engine(
-    settings.db_url,
+    _db_url,
     pool_size=settings.db_pool_size,
     max_overflow=settings.db_max_overflow,
     echo=settings.debug,

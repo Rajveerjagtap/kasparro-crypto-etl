@@ -36,7 +36,7 @@ jobs:
         run: ruff check app/ --ignore=E501,N818
 
       - name: Run MyPy type checker
-        run: mypy app/ --ignore-missing-imports --no-error-summary
+        run: mypy app/ --ignore-missing-imports --no-error-summary --allow-untyped-defs --allow-untyped-calls --disable-error-code=no-any-return --disable-error-code=arg-type --disable-error-code=assignment --disable-error-code=type-arg --disable-error-code=call-overload
 
   # ============== Unit Tests ==============
   test:

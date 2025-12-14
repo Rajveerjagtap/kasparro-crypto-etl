@@ -3,7 +3,7 @@
 import time
 import uuid
 from datetime import datetime, timezone
-from typing import Optional
+from typing import Any, Optional
 
 from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException, Query
 from sqlalchemy import distinct, func, select, text
@@ -118,8 +118,10 @@ async def health_check(db: AsyncSession = Depends(get_db)) -> HealthResponse:
 
     etl_status = ETLHealthStatus(
         last_run_status=last_job.status if last_job else None,
-        last_run_timestamp=last_job.completed_at if last_job else None,
-        active_jobs=0  # Placeholder, would need query for RUNNING jobs
+        last_run_source=last_job.source if last_job else None,
+        last_run_at=last_job.completed_at if last_job else None,
+        records_processed=last_job.records_processed if last_job else None,
+        error_message=last_job.error_message if last_job else None,
     )
 
     # Determine overall status
@@ -198,7 +200,7 @@ async def get_stats(db: AsyncSession = Depends(get_db)) -> StatsResponse:
         symbol_stats.append(
             SymbolStats(
                 symbol=row.symbol,
-                record_count=row.count,
+                record_count=int(row.count),
                 avg_price_usd=float(row.avg_price) if row.avg_price else 0.0,
                 max_price_usd=float(row.max_price) if row.max_price else 0.0,
                 min_price_usd=float(row.min_price) if row.min_price else 0.0,
@@ -277,7 +279,7 @@ async def compare_runs(
     run_id_1: int,
     run_id_2: int,
     db: AsyncSession = Depends(get_db)
-):
+) -> dict[str, Any]:
     """
     Compare two ETL runs by ID.
     """
@@ -309,7 +311,7 @@ async def run_etl_for_source(
     source: DataSource,
     background_tasks: BackgroundTasks,
     sync: bool = False,
-):
+) -> dict[str, Any]:
     """
     Trigger ETL job for a specific source.
     Set sync=true to run synchronously and get immediate results.
@@ -337,7 +339,7 @@ async def run_etl_for_source(
 @router.post("/etl/run")
 async def run_all_etl(
     background_tasks: BackgroundTasks,
-):
+) -> dict[str, str]:
     """
     Trigger ETL jobs for ALL sources in the background.
     """
@@ -349,17 +351,17 @@ async def run_all_etl(
 async def get_etl_jobs(
     limit: int = 10,
     db: AsyncSession = Depends(get_db),
-):
+) -> list[ETLJob]:
     """
     Get history of ETL jobs.
     """
     query = select(ETLJob).order_by(ETLJob.started_at.desc()).limit(limit)
     result = await db.execute(query)
-    return result.scalars().all()
+    return list(result.scalars().all())
 
 
 @router.get("/sources")
-async def get_sources():
+async def get_sources() -> list[str]:
     """
     List available data sources.
     """

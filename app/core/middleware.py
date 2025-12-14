@@ -4,7 +4,7 @@ import json
 import logging
 import time
 import uuid
-from typing import Callable
+from typing import Any, Callable
 
 from fastapi import Request, Response
 from starlette.middleware.base import BaseHTTPMiddleware
@@ -14,7 +14,7 @@ from starlette.types import ASGIApp
 class StructuredLogger(logging.Logger):
     """Custom logger that outputs structured JSON logs."""
 
-    def _log_json(self, level: str, message: str, **extra) -> None:
+    def _log_json(self, level: str, message: str, **extra: Any) -> None:
         """Log a structured JSON message."""
         log_entry = {
             "timestamp": time.strftime("%Y-%m-%dT%H:%M:%S%z", time.localtime()),
@@ -25,11 +25,11 @@ class StructuredLogger(logging.Logger):
         # Use parent's method to actually log
         super().info(json.dumps(log_entry))
 
-    def info_json(self, message: str, **extra) -> None:
+    def info_json(self, message: str, **extra: Any) -> None:
         """Log INFO level JSON."""
         self._log_json("INFO", message, **extra)
 
-    def error_json(self, message: str, **extra) -> None:
+    def error_json(self, message: str, **extra: Any) -> None:
         """Log ERROR level JSON."""
         self._log_json("ERROR", message, **extra)
 

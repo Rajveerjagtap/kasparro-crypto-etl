@@ -55,7 +55,7 @@ async def root():
 
 
 @app.get("/health")
-async def health_check() -> dict:
+async def health_check() -> dict[str, str]:
     """Health check endpoint."""
     from datetime import datetime, timezone
     return {

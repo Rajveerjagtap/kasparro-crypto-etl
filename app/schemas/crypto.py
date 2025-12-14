@@ -128,6 +128,7 @@ class HealthResponse(BaseModel):
     timestamp: datetime = Field(default_factory=lambda: datetime.now())
     database: DBHealthStatus
     etl: ETLHealthStatus
+    metadata: Optional[ResponseMetadata] = None
 
 
 class SymbolStats(BaseModel):
