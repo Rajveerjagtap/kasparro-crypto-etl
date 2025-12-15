@@ -12,7 +12,7 @@ from app.core.config import settings
 def setup_logging(level: Optional[str] = None) -> logging.Logger:
     """
     Configure and return application logger.
-    
+
     In container environments (detected via /.dockerenv or KUBERNETES_SERVICE_HOST),
     logs go to stdout only for proper log aggregation by orchestrators.
     In local development, logs also go to rotating file.
