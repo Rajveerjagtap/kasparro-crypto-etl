@@ -232,7 +232,9 @@ resource scheduler 'Microsoft.App/containerApps@2023-05-01' = {
             }
           ]
           command: [
-            '/code/start-scheduler.sh'
+            'python'
+            '-m'
+            'app.scheduler'
           ]
         }
       ]

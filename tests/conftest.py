@@ -1,6 +1,7 @@
 """Pytest fixtures and configuration for comprehensive testing."""
 
 import asyncio
+import os
 import tempfile
 from datetime import datetime, timezone
 from pathlib import Path
@@ -40,18 +41,50 @@ def anyio_backend():
     return "asyncio"
 
 
+# ============== Database URL Selection ==============
+
+
+def get_test_database_url() -> str:
+    """
+    Get test database URL.
+    Prefers PostgreSQL from environment (for CI parity), falls back to SQLite for local.
+    """
+    # Check for CI/integration test PostgreSQL
+    pg_url = os.getenv("TEST_DATABASE_URL") or os.getenv("DATABASE_URL")
+    if pg_url:
+        # Ensure it's async-compatible
+        if pg_url.startswith("postgresql://"):
+            pg_url = pg_url.replace("postgresql://", "postgresql+asyncpg://", 1)
+        return pg_url
+
+    # Fallback to SQLite for fast local unit tests
+    return "sqlite+aiosqlite:///:memory:"
+
+
 # ============== Database Fixtures ==============
 
 
 @pytest_asyncio.fixture
 async def test_engine():
-    """Create test database engine with SQLite in-memory."""
-    # Use SQLite for fast, isolated tests
-    engine = create_async_engine(
-        "sqlite+aiosqlite:///:memory:",
-        echo=False,
-        future=True,
-    )
+    """Create test database engine - uses PostgreSQL in CI, SQLite locally."""
+    db_url = get_test_database_url()
+    
+    # Configure engine based on database type
+    if "sqlite" in db_url:
+        engine = create_async_engine(
+            db_url,
+            echo=False,
+            future=True,
+        )
+    else:
+        # PostgreSQL settings for CI parity
+        engine = create_async_engine(
+            db_url,
+            echo=False,
+            future=True,
+            pool_size=5,
+            max_overflow=10,
+        )
     
     # Create all tables
     async with engine.begin() as conn:
