@@ -1,10 +1,7 @@
 """Tests for database models."""
 
-import pytest
-from datetime import datetime, timezone
 
 from app.db.models import (
-    Base,
     Coin,
     DataSource,
     ETLJob,

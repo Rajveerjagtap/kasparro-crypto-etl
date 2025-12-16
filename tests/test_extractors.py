@@ -1,12 +1,10 @@
 """Tests for ETL extractors."""
 
-import pytest
 from datetime import datetime, timezone
-from unittest.mock import AsyncMock, patch, MagicMock
 
 from app.db.models import DataSource
-from app.ingestion.extractors.coinpaprika import CoinPaprikaExtractor
 from app.ingestion.extractors.coingecko import CoinGeckoExtractor
+from app.ingestion.extractors.coinpaprika import CoinPaprikaExtractor
 from app.ingestion.extractors.csv_extractor import CSVExtractor
 from app.ingestion.transformers.schemas import RawCryptoRecord
 

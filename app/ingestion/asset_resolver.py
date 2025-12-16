@@ -91,8 +91,8 @@ class AssetResolver:
             SourceAssetMapping.source == source,
             SourceAssetMapping.source_id == source_id,
         )
-        result = await session.execute(mapping_query)
-        existing_mapping = result.scalar_one_or_none()
+        mapping_result = await session.execute(mapping_query)
+        existing_mapping = mapping_result.scalar_one_or_none()
 
         if existing_mapping:
             self._mapping_cache[cache_key] = existing_mapping.coin_id
@@ -101,8 +101,8 @@ class AssetResolver:
 
         # 3. Try to find existing Coin by symbol (for cross-source matching)
         coin_query = select(Coin).where(Coin.symbol == normalized_symbol)
-        result = await session.execute(coin_query)
-        existing_coin = result.scalar_one_or_none()
+        coin_result = await session.execute(coin_query)
+        existing_coin = coin_result.scalar_one_or_none()
 
         if existing_coin:
             # Create new mapping for this source to existing coin
@@ -326,8 +326,8 @@ class AssetResolver:
         try:
             # Load all mappings
             mapping_query = select(SourceAssetMapping)
-            result = await session.execute(mapping_query)
-            mappings = result.scalars().all()
+            mapping_result = await session.execute(mapping_query)
+            mappings = mapping_result.scalars().all()
 
             for mapping in mappings:
                 cache_key = (mapping.source, mapping.source_id)
@@ -335,8 +335,8 @@ class AssetResolver:
 
             # Load all coins for symbol cache
             coin_query = select(Coin)
-            result = await session.execute(coin_query)
-            coins = result.scalars().all()
+            coin_result = await session.execute(coin_query)
+            coins = coin_result.scalars().all()
 
             for coin in coins:
                 self._symbol_cache[coin.symbol] = coin.id

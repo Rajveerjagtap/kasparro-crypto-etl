@@ -142,17 +142,17 @@ class ETLService:
             # Get source-specific ID from raw data
             source_id = source_id_map.get(record.symbol)
 
-            # Resolve to canonical coin entity
-            coin = await self.asset_resolver.resolve_asset(
+            # Resolve to canonical coin entity (returns coin_id)
+            coin_id = await self.asset_resolver.resolve_asset(
                 session=session,
                 source=source,
                 source_id=source_id or record.symbol,  # Fallback to symbol if no source_id
-                symbol=record.symbol,
-                name=record.name,
+                source_symbol=record.symbol,
+                source_name=record.name,
             )
 
-            if coin:
-                resolved_records.append((coin.id, record))
+            if coin_id:
+                resolved_records.append((coin_id, record))
             else:
                 logger.warning(f"Could not resolve asset: {record.symbol} from {source.value}")
 

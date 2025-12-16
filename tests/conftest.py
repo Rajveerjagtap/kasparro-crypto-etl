@@ -6,23 +6,20 @@ import tempfile
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import AsyncGenerator
-from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 import pytest_asyncio
 from fastapi.testclient import TestClient
-from httpx import AsyncClient, ASGITransport
-from sqlalchemy import event
+from httpx import ASGITransport, AsyncClient
 from sqlalchemy.ext.asyncio import (
     AsyncSession,
     async_sessionmaker,
     create_async_engine,
 )
 
-from app.db.models import Base, DataSource, ETLJob, ETLStatus, UnifiedCryptoData, Coin
+from app.db.models import Base, Coin, DataSource, UnifiedCryptoData
 from app.db.session import get_db
 from app.main import app
-
 
 # ============== Pytest Configuration ==============
 
@@ -68,7 +65,7 @@ def get_test_database_url() -> str:
 async def test_engine():
     """Create test database engine - uses PostgreSQL in CI, SQLite locally."""
     db_url = get_test_database_url()
-    
+
     # Configure engine based on database type
     if "sqlite" in db_url:
         engine = create_async_engine(
@@ -85,13 +82,13 @@ async def test_engine():
             pool_size=5,
             max_overflow=10,
         )
-    
+
     # Create all tables
     async with engine.begin() as conn:
         await conn.run_sync(Base.metadata.create_all)
-    
+
     yield engine
-    
+
     # Cleanup
     async with engine.begin() as conn:
         await conn.run_sync(Base.metadata.drop_all)
@@ -107,7 +104,7 @@ async def test_session(test_engine) -> AsyncGenerator[AsyncSession, None]:
         expire_on_commit=False,
         autoflush=False,
     )
-    
+
     async with async_session() as session:
         yield session
         # Rollback any uncommitted changes
@@ -126,7 +123,7 @@ async def db_session(test_engine) -> AsyncGenerator[AsyncSession, None]:
         expire_on_commit=False,
         autoflush=False,
     )
-    
+
     async with async_session() as session:
         yield session
         await session.rollback()
@@ -148,19 +145,19 @@ async def async_client(test_engine) -> AsyncGenerator[AsyncClient, None]:
         expire_on_commit=False,
         autoflush=False,
     )
-    
+
     # Override the get_db dependency
     async def override_get_db() -> AsyncGenerator[AsyncSession, None]:
         async with async_session() as session:
             yield session
-    
+
     app.dependency_overrides[get_db] = override_get_db
-    
+
     # Create async client
     transport = ASGITransport(app=app)
     async with AsyncClient(transport=transport, base_url="http://test") as client:
         yield client
-    
+
     # Clear dependency overrides
     app.dependency_overrides.clear()
 
@@ -278,9 +275,9 @@ def temp_csv_file() -> Path:
         f.write("ETH,2500.00,15000000000,2024-01-15,300000000000\n")
         f.write("XRP,0.55,5000000000,2024-01-15,28000000000\n")
         temp_path = Path(f.name)
-    
+
     yield temp_path
-    
+
     # Cleanup
     if temp_path.exists():
         temp_path.unlink()
@@ -300,9 +297,9 @@ def temp_csv_with_extra_columns() -> Path:
         f.write("ETH,2500.00,15000000000,2024-01-15,300000000000,another_value,456\n")
         f.write("SOL,95.50,3000000000,2024-01-15,40000000000,random_data,789\n")
         temp_path = Path(f.name)
-    
+
     yield temp_path
-    
+
     # Cleanup
     if temp_path.exists():
         temp_path.unlink()
@@ -321,9 +318,9 @@ def temp_csv_missing_columns() -> Path:
         f.write("BTC,45000.50,25000000000,2024-01-15\n")
         f.write("ETH,2500.00,15000000000,2024-01-15\n")
         temp_path = Path(f.name)
-    
+
     yield temp_path
-    
+
     # Cleanup
     if temp_path.exists():
         temp_path.unlink()
@@ -336,7 +333,7 @@ def temp_csv_missing_columns() -> Path:
 def mock_etl_service():
     """Create a mock ETL service for testing."""
     from app.ingestion.service import ETLService
-    
+
     service = ETLService()
     return service
 
@@ -348,8 +345,7 @@ async def seeded_db(test_session: AsyncSession, sample_crypto_data: list[dict]):
     Returns the session with data already committed.
     Creates canonical Coin entities and links UnifiedCryptoData via coin_id.
     """
-    from app.db.models import UnifiedCryptoData, DataSource, Coin
-    
+
     # First create Coin entities
     coins = {}
     for data in sample_crypto_data:
@@ -362,9 +358,9 @@ async def seeded_db(test_session: AsyncSession, sample_crypto_data: list[dict]):
             )
             test_session.add(coin)
             coins[symbol] = coin
-    
+
     await test_session.flush()  # Get coin IDs
-    
+
     # Now create UnifiedCryptoData with coin_id
     for data in sample_crypto_data:
         record = UnifiedCryptoData(
@@ -377,7 +373,7 @@ async def seeded_db(test_session: AsyncSession, sample_crypto_data: list[dict]):
             timestamp=data["timestamp"],
         )
         test_session.add(record)
-    
+
     await test_session.commit()
-    
+
     yield test_session

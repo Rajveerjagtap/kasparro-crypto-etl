@@ -1,12 +1,10 @@
 """Tests for ETL service."""
 
-import pytest
-from datetime import datetime, timezone
-from unittest.mock import AsyncMock, MagicMock, patch
 
-from app.db.models import DataSource, ETLStatus
+import pytest
+
+from app.db.models import DataSource
 from app.ingestion.service import ETLService
-from app.schemas.crypto import UnifiedCryptoDataCreate
 
 
 class TestETLService:
@@ -15,8 +13,8 @@ class TestETLService:
     def test_get_extractor_returns_correct_type(self):
         service = ETLService()
 
-        from app.ingestion.extractors.coinpaprika import CoinPaprikaExtractor
         from app.ingestion.extractors.coingecko import CoinGeckoExtractor
+        from app.ingestion.extractors.coinpaprika import CoinPaprikaExtractor
         from app.ingestion.extractors.csv_extractor import CSVExtractor
 
         assert isinstance(service.get_extractor(DataSource.COINPAPRIKA), CoinPaprikaExtractor)

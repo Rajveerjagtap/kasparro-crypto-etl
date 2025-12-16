@@ -7,16 +7,15 @@ Tests:
 3. API response with new fields - forward compatibility
 4. Type coercion and validation
 """
-import pytest
 from datetime import datetime, timezone
-from uuid import uuid4
-import json
-from unittest.mock import patch, MagicMock, AsyncMock
+from unittest.mock import AsyncMock, MagicMock, patch
 
-from app.ingestion.extractors.csv_extractor import CSVExtractor
+import pytest
+
+from app.db.models import DataSource, RawData, UnifiedCryptoData
 from app.ingestion.extractors.coingecko import CoinGeckoExtractor
 from app.ingestion.extractors.coinpaprika import CoinPaprikaExtractor
-from app.db.models import UnifiedCryptoData, RawData, ETLJob, DataSource, ETLStatus
+from app.ingestion.extractors.csv_extractor import CSVExtractor
 
 pytestmark = pytest.mark.asyncio
 
@@ -61,7 +60,7 @@ value3,value4
 """
         csv_file = tmp_path / "truly_missing.csv"
         csv_file.write_text(csv_content)
-        
+
         extractor = CSVExtractor(file_path=str(csv_file))
 
         # The extractor may either:
@@ -94,7 +93,7 @@ ETH,Ethereum,"4000.50","500000000000","25000000000"
         raw_data, normalized_data = await extractor.extract()
 
         assert len(normalized_data) == 2
-        
+
         for record in normalized_data:
             assert isinstance(record.price_usd, (int, float))
             # Verify actual values
@@ -174,7 +173,7 @@ class TestAPISchemaDrift:
 
             # Should successfully extract without errors
             assert len(normalized_data) == 2
-            
+
             # Core fields should be present
             for record in normalized_data:
                 assert record.symbol is not None
@@ -212,7 +211,7 @@ class TestAPISchemaDrift:
             mock_client.return_value = mock_client_instance
 
             extractor = CoinPaprikaExtractor()
-            
+
             # Should handle missing optional fields gracefully
             raw_data, normalized_data = await extractor.extract()
             assert len(normalized_data) >= 1
@@ -283,7 +282,7 @@ class TestTransformerSchemaDrift:
 
         extractor = CSVExtractor(file_path=str(tmp_path / "dummy.csv"))
         result = extractor.normalize(input_data)
-        
+
         assert len(result) == 1
         assert result[0].symbol == "BTC"
         assert result[0].price_usd == 50000.0
@@ -366,7 +365,7 @@ class TestSchemaVersioning:
 
         # Both should coexist and be queryable
         from sqlalchemy import select
-        
+
         stmt = select(UnifiedCryptoData).where(
             UnifiedCryptoData.symbol.in_(["OLD", "NEW"])
         )
@@ -397,7 +396,7 @@ class TestDataValidation:
         )
         db_session.add(invalid_record)
         await db_session.commit()
-        
+
         assert invalid_record.id is not None
         assert invalid_record.price_usd == -100.0
 
