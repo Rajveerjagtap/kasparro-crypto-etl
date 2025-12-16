@@ -127,7 +127,10 @@ class CoinPaprikaExtractor(BaseExtractor):
                 self._client = None
 
     def normalize(self, raw_data: list[dict[str, Any]]) -> list[UnifiedCryptoDataCreate]:
-        """Transform CoinPaprika response to unified schema."""
+        """Transform CoinPaprika response to unified schema.
+        
+        Extracts source_id (CoinPaprika 'id') and name for canonical entity resolution.
+        """
         normalized = []
 
         for item in raw_data:
@@ -147,9 +150,11 @@ class CoinPaprikaExtractor(BaseExtractor):
                     timestamp=validated.last_updated or datetime.now(timezone.utc),
                 )
 
-                # Create unified schema
+                # Create unified schema with source metadata for entity resolution
                 unified = UnifiedCryptoDataCreate(
                     symbol=record.symbol,
+                    source_id=validated.id,  # CoinPaprika unique ID (e.g., "btc-bitcoin")
+                    name=validated.name,  # Asset name (e.g., "Bitcoin")
                     price_usd=record.price_usd,
                     market_cap=record.market_cap,
                     volume_24h=record.volume_24h,

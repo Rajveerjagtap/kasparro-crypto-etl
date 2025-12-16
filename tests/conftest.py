@@ -19,7 +19,7 @@ from sqlalchemy.ext.asyncio import (
     create_async_engine,
 )
 
-from app.db.models import Base, DataSource, ETLJob, ETLStatus, UnifiedCryptoData
+from app.db.models import Base, DataSource, ETLJob, ETLStatus, UnifiedCryptoData, Coin
 from app.db.session import get_db
 from app.main import app
 
@@ -346,11 +346,29 @@ async def seeded_db(test_session: AsyncSession, sample_crypto_data: list[dict]):
     """
     Seed the test database with sample data.
     Returns the session with data already committed.
+    Creates canonical Coin entities and links UnifiedCryptoData via coin_id.
     """
-    from app.db.models import UnifiedCryptoData, DataSource
+    from app.db.models import UnifiedCryptoData, DataSource, Coin
     
+    # First create Coin entities
+    coins = {}
+    for data in sample_crypto_data:
+        symbol = data["symbol"]
+        if symbol not in coins:
+            coin = Coin(
+                symbol=symbol,
+                name=symbol,  # Use symbol as name for test data
+                slug=symbol.lower(),
+            )
+            test_session.add(coin)
+            coins[symbol] = coin
+    
+    await test_session.flush()  # Get coin IDs
+    
+    # Now create UnifiedCryptoData with coin_id
     for data in sample_crypto_data:
         record = UnifiedCryptoData(
+            coin_id=coins[data["symbol"]].id,
             symbol=data["symbol"],
             price_usd=data["price_usd"],
             market_cap=data["market_cap"],

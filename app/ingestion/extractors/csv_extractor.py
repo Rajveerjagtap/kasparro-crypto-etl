@@ -107,23 +107,30 @@ class CSVExtractor(BaseExtractor):
             )
 
     def normalize(self, raw_data: list[dict[str, Any]]) -> list[UnifiedCryptoDataCreate]:
-        """Transform CSV records to unified schema."""
+        """Transform CSV records to unified schema.
+        
+        CSV sources may have limited metadata, uses symbol as fallback for name.
+        """
         normalized = []
 
         for item in raw_data:
             try:
                 # Build intermediate record with validation
+                symbol = item.get("symbol", item.get("ticker", "UNKNOWN"))
                 record = RawCryptoRecord(
-                    symbol=item.get("symbol", item.get("ticker", "UNKNOWN")),
+                    symbol=symbol,
                     price_usd=item.get("price_usd", item.get("price")),
                     market_cap=item.get("market_cap"),
                     volume_24h=item.get("volume_24h", item.get("vol")),
                     timestamp=item.get("timestamp", item.get("date", datetime.now(timezone.utc))),
                 )
 
-                # Create unified schema
+                # Create unified schema with source metadata
+                # CSV may not have distinct source_id, use symbol as fallback
                 unified = UnifiedCryptoDataCreate(
                     symbol=record.symbol,
+                    source_id=item.get("id") or symbol,  # Use id if available, else symbol
+                    name=item.get("name") or symbol,  # Use name if available, else symbol
                     price_usd=record.price_usd,
                     market_cap=record.market_cap,
                     volume_24h=record.volume_24h,

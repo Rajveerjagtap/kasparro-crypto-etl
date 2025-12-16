@@ -5,10 +5,12 @@ from datetime import datetime, timezone
 
 from app.db.models import (
     Base,
+    Coin,
     DataSource,
     ETLJob,
     ETLStatus,
     RawData,
+    SourceAssetMapping,
     UnifiedCryptoData,
 )
 
@@ -29,6 +31,33 @@ class TestETLStatusEnum:
         assert ETLStatus.SUCCESS.value == "success"
         assert ETLStatus.FAILURE.value == "failure"
         assert ETLStatus.RUNNING.value == "running"
+
+
+class TestCoinModel:
+    """Test Coin master entity model structure."""
+
+    def test_tablename(self):
+        assert Coin.__tablename__ == "coins"
+
+    def test_columns_exist(self):
+        columns = {c.name for c in Coin.__table__.columns}
+        expected = {"id", "symbol", "name", "slug", "created_at", "updated_at"}
+        assert expected == columns
+
+
+class TestSourceAssetMappingModel:
+    """Test SourceAssetMapping model structure."""
+
+    def test_tablename(self):
+        assert SourceAssetMapping.__tablename__ == "source_asset_mappings"
+
+    def test_columns_exist(self):
+        columns = {c.name for c in SourceAssetMapping.__table__.columns}
+        expected = {
+            "id", "coin_id", "source", "source_id",
+            "source_symbol", "source_name", "created_at"
+        }
+        assert expected == columns
 
 
 class TestRawDataModel:
@@ -52,10 +81,15 @@ class TestUnifiedCryptoDataModel:
     def test_columns_exist(self):
         columns = {c.name for c in UnifiedCryptoData.__table__.columns}
         expected = {
-            "id", "symbol", "price_usd", "market_cap",
+            "id", "coin_id", "symbol", "price_usd", "market_cap",
             "volume_24h", "source", "ingested_at", "timestamp"
         }
         assert expected == columns
+
+    def test_coin_id_foreign_key(self):
+        """Verify coin_id has a foreign key relationship to coins table."""
+        fk_columns = [fk.column.name for fk in UnifiedCryptoData.__table__.foreign_keys]
+        assert "id" in fk_columns  # FK to coins.id
 
 
 class TestETLJobModel:

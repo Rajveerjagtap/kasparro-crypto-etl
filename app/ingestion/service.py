@@ -1,4 +1,8 @@
-"""ETL Service - Orchestrates extraction, transformation, and loading."""
+"""ETL Service - Orchestrates extraction, transformation, and loading.
+
+Implements proper entity normalization via AssetResolver - maps source-specific
+asset identifiers to canonical Coin entities for aggregation and deduplication.
+"""
 
 import asyncio
 import time
@@ -13,14 +17,14 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.core.exceptions import DatabaseException, ExtractionException
 from app.core.logging import logger
 from app.core.middleware import metrics_collector
-from app.db.models import DataSource, ETLJob, ETLStatus, RawData, UnifiedCryptoData
+from app.db.models import DataSource, ETLJob, ETLStatus, RawData, UnifiedCryptoData, Coin
 from app.db.session import get_session
 from app.ingestion.base import BaseExtractor
 from app.ingestion.drift import DriftDetector
 from app.ingestion.extractors.coingecko import CoinGeckoExtractor
 from app.ingestion.extractors.coinpaprika import CoinPaprikaExtractor
 from app.ingestion.extractors.csv_extractor import CSVExtractor
-from app.ingestion.normalization import SymbolNormalizer
+from app.ingestion.asset_resolver import AssetResolver
 from app.schemas.crypto import UnifiedCryptoDataCreate
 
 
@@ -44,7 +48,8 @@ class ETLService:
             DataSource.COINGECKO: DriftDetector(expected_columns=["id", "symbol", "name", "current_price"]),
             DataSource.CSV: DriftDetector(expected_columns=["ticker", "price", "vol", "date"]),
         }
-        self.symbol_normalizer = SymbolNormalizer()
+        # Asset resolver for canonical entity normalization
+        self.asset_resolver = AssetResolver()
 
     def get_extractor(self, source: DataSource) -> BaseExtractor:
         """Get or create extractor instance for source."""
@@ -109,51 +114,85 @@ class ETLService:
         await session.flush()
         logger.debug(f"Saved {len(raw_data)} raw records for {source.value}")
 
-    async def upsert_unified_data(
+    async def resolve_and_upsert_unified_data(
         self,
         session: AsyncSession,
         records: list[UnifiedCryptoDataCreate],
+        raw_data: list[dict],
+        source: DataSource,
     ) -> int:
         """
-        Insert or update unified crypto data using ON CONFLICT DO UPDATE.
-        Prevents duplicates based on (symbol, timestamp).
+        Resolve assets to canonical Coin entities and upsert unified data.
+        
+        This implements proper entity normalization:
+        1. For each record, resolve source_id + symbol to a canonical Coin
+        2. Use coin_id (not raw symbol) as the primary identifier
+        3. Prevents duplicates based on (coin_id, timestamp)
+        
         Returns count of affected records.
         """
         if not records:
             return 0
 
-        # Deduplicate records by (symbol, timestamp) to avoid CardinalityViolationError
-        # Last record wins
-        unique_records = {
-            (r.symbol, r.timestamp): r for r in records
-        }
-        deduplicated_records = list(unique_records.values())
+        # Build source_id map from raw_data for asset resolution
+        source_id_map = self._build_source_id_map(raw_data, source)
+        
+        # Resolve each record to a canonical coin
+        resolved_records = []
+        for record in records:
+            # Get source-specific ID from raw data
+            source_id = source_id_map.get(record.symbol)
+            
+            # Resolve to canonical coin entity
+            coin = await self.asset_resolver.resolve_asset(
+                session=session,
+                source=source,
+                source_id=source_id or record.symbol,  # Fallback to symbol if no source_id
+                symbol=record.symbol,
+                name=record.name,
+            )
+            
+            if coin:
+                resolved_records.append((coin.id, record))
+            else:
+                logger.warning(f"Could not resolve asset: {record.symbol} from {source.value}")
+        
+        if not resolved_records:
+            return 0
 
-        if len(deduplicated_records) < len(records):
+        # Deduplicate by (coin_id, timestamp) - last record wins
+        unique_records = {
+            (coin_id, r.timestamp): (coin_id, r) 
+            for coin_id, r in resolved_records
+        }
+        deduplicated = list(unique_records.values())
+
+        if len(deduplicated) < len(resolved_records):
             logger.warning(
-                f"Dropped {len(records) - len(deduplicated_records)} duplicate records before upsert."
+                f"Dropped {len(resolved_records) - len(deduplicated)} duplicate records before upsert."
             )
 
-        # Build values for bulk upsert
+        # Build values for bulk upsert with coin_id
         values = [
             {
-                "symbol": r.symbol,
-                "price_usd": r.price_usd,
-                "market_cap": r.market_cap,
-                "volume_24h": r.volume_24h,
-                "source": r.source,
-                "timestamp": r.timestamp,
+                "coin_id": coin_id,
+                "symbol": record.symbol,  # Keep symbol for readability/queries
+                "price_usd": record.price_usd,
+                "market_cap": record.market_cap,
+                "volume_24h": record.volume_24h,
+                "source": record.source,
+                "timestamp": record.timestamp,
                 "ingested_at": datetime.now(timezone.utc),
             }
-            for r in deduplicated_records
+            for coin_id, record in deduplicated
         ]
 
         # PostgreSQL upsert using INSERT ... ON CONFLICT
         stmt = insert(UnifiedCryptoData).values(values)
 
-        # Update on conflict: (symbol, timestamp)
+        # Update on conflict: (coin_id, timestamp) - canonical entity deduplication
         stmt = stmt.on_conflict_do_update(
-            index_elements=["symbol", "timestamp"],
+            index_elements=["coin_id", "timestamp"],
             set_={
                 "price_usd": stmt.excluded.price_usd,
                 "market_cap": stmt.excluded.market_cap,
@@ -165,6 +204,38 @@ class ETLService:
 
         await session.execute(stmt)
         return len(values)
+
+    def _build_source_id_map(
+        self, 
+        raw_data: list[dict], 
+        source: DataSource
+    ) -> dict[str, str]:
+        """
+        Extract source-specific IDs from raw data.
+        Maps symbol -> source_id for asset resolution.
+        """
+        source_id_map = {}
+        
+        for item in raw_data:
+            if source == DataSource.COINGECKO:
+                # CoinGecko: id is the unique identifier, symbol is ticker
+                source_id = item.get("id")
+                symbol = item.get("symbol", "").upper()
+            elif source == DataSource.COINPAPRIKA:
+                # CoinPaprika: id is unique (e.g., "btc-bitcoin")
+                source_id = item.get("id")
+                symbol = item.get("symbol", "").upper()
+            elif source == DataSource.CSV:
+                # CSV: use ticker/symbol as source_id
+                source_id = item.get("ticker") or item.get("symbol")
+                symbol = (item.get("ticker") or item.get("symbol", "")).upper()
+            else:
+                continue
+            
+            if source_id and symbol:
+                source_id_map[symbol] = source_id
+        
+        return source_id_map
 
     async def run_etl_for_source(
         self,
@@ -216,18 +287,18 @@ class ETLService:
                     except Exception as e:
                         logger.warning(f"Drift detection skipped/failed: {e}")
 
-                # --- Fuzzy Mapping / Normalization ---
-                for record in normalized_data:
-                    normalized_symbol = self.symbol_normalizer.normalize(record.symbol)
-                    if normalized_symbol:
-                        record.symbol = normalized_symbol
-                    # If normalization fails, we keep the original symbol (or could skip/log)
+                # --- Entity Normalization via AssetResolver ---
+                # Instead of simple symbol string normalization, we resolve each asset
+                # to a canonical Coin entity using source-specific identifiers.
+                # This happens in resolve_and_upsert_unified_data()
 
                 # Save raw data for audit
                 await self.save_raw_data(session, source, raw_data)
 
-                # Upsert normalized data
-                records_processed = await self.upsert_unified_data(session, normalized_data)
+                # Resolve assets and upsert normalized data with coin_id
+                records_processed = await self.resolve_and_upsert_unified_data(
+                    session, normalized_data, raw_data, source
+                )
 
                 # Commit transaction
                 await session.commit()
