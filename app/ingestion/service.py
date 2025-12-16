@@ -17,14 +17,14 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.core.exceptions import DatabaseException, ExtractionException
 from app.core.logging import logger
 from app.core.middleware import metrics_collector
-from app.db.models import DataSource, ETLJob, ETLStatus, RawData, UnifiedCryptoData, Coin
+from app.db.models import DataSource, ETLJob, ETLStatus, RawData, UnifiedCryptoData
 from app.db.session import get_session
+from app.ingestion.asset_resolver import AssetResolver
 from app.ingestion.base import BaseExtractor
 from app.ingestion.drift import DriftDetector
 from app.ingestion.extractors.coingecko import CoinGeckoExtractor
 from app.ingestion.extractors.coinpaprika import CoinPaprikaExtractor
 from app.ingestion.extractors.csv_extractor import CSVExtractor
-from app.ingestion.asset_resolver import AssetResolver
 from app.schemas.crypto import UnifiedCryptoDataCreate
 
 
@@ -121,14 +121,13 @@ class ETLService:
         raw_data: list[dict],
         source: DataSource,
     ) -> int:
-        """
-        Resolve assets to canonical Coin entities and upsert unified data.
-        
+        """Resolve assets to canonical Coin entities and upsert unified data.
+
         This implements proper entity normalization:
         1. For each record, resolve source_id + symbol to a canonical Coin
         2. Use coin_id (not raw symbol) as the primary identifier
         3. Prevents duplicates based on (coin_id, timestamp)
-        
+
         Returns count of affected records.
         """
         if not records:
@@ -136,13 +135,13 @@ class ETLService:
 
         # Build source_id map from raw_data for asset resolution
         source_id_map = self._build_source_id_map(raw_data, source)
-        
+
         # Resolve each record to a canonical coin
         resolved_records = []
         for record in records:
             # Get source-specific ID from raw data
             source_id = source_id_map.get(record.symbol)
-            
+
             # Resolve to canonical coin entity
             coin = await self.asset_resolver.resolve_asset(
                 session=session,
@@ -151,18 +150,18 @@ class ETLService:
                 symbol=record.symbol,
                 name=record.name,
             )
-            
+
             if coin:
                 resolved_records.append((coin.id, record))
             else:
                 logger.warning(f"Could not resolve asset: {record.symbol} from {source.value}")
-        
+
         if not resolved_records:
             return 0
 
         # Deduplicate by (coin_id, timestamp) - last record wins
         unique_records = {
-            (coin_id, r.timestamp): (coin_id, r) 
+            (coin_id, r.timestamp): (coin_id, r)
             for coin_id, r in resolved_records
         }
         deduplicated = list(unique_records.values())
@@ -206,8 +205,8 @@ class ETLService:
         return len(values)
 
     def _build_source_id_map(
-        self, 
-        raw_data: list[dict], 
+        self,
+        raw_data: list[dict],
         source: DataSource
     ) -> dict[str, str]:
         """
@@ -215,7 +214,7 @@ class ETLService:
         Maps symbol -> source_id for asset resolution.
         """
         source_id_map = {}
-        
+
         for item in raw_data:
             if source == DataSource.COINGECKO:
                 # CoinGecko: id is the unique identifier, symbol is ticker
@@ -231,10 +230,10 @@ class ETLService:
                 symbol = (item.get("ticker") or item.get("symbol", "")).upper()
             else:
                 continue
-            
+
             if source_id and symbol:
                 source_id_map[symbol] = source_id
-        
+
         return source_id_map
 
     async def run_etl_for_source(

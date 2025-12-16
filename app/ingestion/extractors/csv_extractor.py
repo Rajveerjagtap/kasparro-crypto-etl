@@ -108,7 +108,7 @@ class CSVExtractor(BaseExtractor):
 
     def normalize(self, raw_data: list[dict[str, Any]]) -> list[UnifiedCryptoDataCreate]:
         """Transform CSV records to unified schema.
-        
+
         CSV sources may have limited metadata, uses symbol as fallback for name.
         """
         normalized = []

@@ -120,7 +120,7 @@ class UnifiedCryptoDataSchema(BaseModel):
 
 class UnifiedCryptoDataCreate(BaseModel):
     """Schema for creating unified crypto data.
-    
+
     Contains both coin_id (canonical reference) and source metadata.
     The ETL pipeline resolves source data to coin_id via AssetResolver.
     """

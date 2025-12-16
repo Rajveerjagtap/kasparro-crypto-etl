@@ -154,7 +154,7 @@ class CoinGeckoExtractor(BaseExtractor):
 
     def normalize(self, raw_data: list[dict[str, Any]]) -> list[UnifiedCryptoDataCreate]:
         """Transform CoinGecko response to unified schema.
-        
+
         Extracts source_id (CoinGecko 'id') and name for canonical entity resolution.
         """
         normalized = []

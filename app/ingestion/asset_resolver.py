@@ -15,12 +15,9 @@ Architecture:
               SourceAssetMapping
 """
 
-from datetime import datetime, timezone
 from typing import Optional
 
 from sqlalchemy import select
-from sqlalchemy.dialects.postgresql import insert as pg_insert
-from sqlalchemy.dialects.sqlite import insert as sqlite_insert
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.logging import logger
@@ -313,9 +310,6 @@ class AssetResolver:
         """Generate a unique slug for a coin."""
         # Use lowercase symbol as primary slug
         base_slug = symbol.lower().strip()
-
-        # Add timestamp to ensure uniqueness for new coins
-        timestamp_suffix = datetime.now(timezone.utc).strftime("%Y%m%d%H%M%S")
 
         # If name is different from symbol, include it
         if name and name.upper() != symbol:

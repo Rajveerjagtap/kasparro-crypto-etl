@@ -128,7 +128,7 @@ class CoinPaprikaExtractor(BaseExtractor):
 
     def normalize(self, raw_data: list[dict[str, Any]]) -> list[UnifiedCryptoDataCreate]:
         """Transform CoinPaprika response to unified schema.
-        
+
         Extracts source_id (CoinPaprika 'id') and name for canonical entity resolution.
         """
         normalized = []

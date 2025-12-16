@@ -8,7 +8,7 @@ Implements proper data normalization with:
 
 import enum
 from datetime import datetime
-from typing import Any, Optional, TYPE_CHECKING
+from typing import TYPE_CHECKING, Any, Optional
 
 from sqlalchemy import (
     DateTime,
