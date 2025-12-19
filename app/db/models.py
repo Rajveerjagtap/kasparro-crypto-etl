@@ -72,7 +72,8 @@ class Coin(Base):
     __tablename__ = "coins"
 
     id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
-    symbol: Mapped[str] = mapped_column(String(20), nullable=False)  # Index defined in __table_args__
+    # Index defined in __table_args__
+    symbol: Mapped[str] = mapped_column(String(20), nullable=False)
     name: Mapped[str] = mapped_column(String(100), nullable=False)
     slug: Mapped[str] = mapped_column(String(100), nullable=False, unique=True)
 
@@ -176,7 +177,10 @@ class SourceAssetMapping(Base):
     )
 
     def __repr__(self) -> str:
-        return f"<SourceAssetMapping(coin_id={self.coin_id}, source='{self.source.value}', source_id='{self.source_id}')>"
+        return (
+            f"<SourceAssetMapping(coin_id={self.coin_id}, "
+            f"source='{self.source.value}', source_id='{self.source_id}')>"
+        )
 
 
 # =============================================================================
@@ -301,11 +305,17 @@ class ETLJob(Base):
 
     id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
     source: Mapped[DataSource] = mapped_column(
-        Enum(DataSource, name="data_source_enum", create_type=False, values_callable=lambda x: [e.value for e in x]),
+        Enum(
+            DataSource, name="data_source_enum",
+            create_type=False, values_callable=lambda x: [e.value for e in x]
+        ),
         nullable=False,
     )
     status: Mapped[ETLStatus] = mapped_column(
-        Enum(ETLStatus, name="etl_status_enum", create_type=False, values_callable=lambda x: [e.value for e in x]),
+        Enum(
+            ETLStatus, name="etl_status_enum",
+            create_type=False, values_callable=lambda x: [e.value for e in x]
+        ),
         nullable=False,
     )
     last_processed_timestamp: Mapped[datetime | None] = mapped_column(

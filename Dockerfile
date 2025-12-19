@@ -29,9 +29,11 @@ ENV PYTHONDONTWRITEBYTECODE=1 \
 
 # Install runtime dependencies
 # postgresql-client is needed for pg_isready in entrypoint scripts
+# curl is needed for healthcheck
 RUN apt-get update && apt-get install -y --no-install-recommends \
     postgresql-client \
     libpq5 \
+    curl \
     && rm -rf /var/lib/apt/lists/*
 
 # Copy wheels from builder
@@ -52,5 +54,9 @@ COPY entrypoint.sh .
 RUN chmod +x /code/entrypoint.sh
 
 EXPOSE 8000
+
+# Docker healthcheck (P2.5)
+HEALTHCHECK --interval=30s --timeout=10s --start-period=40s --retries=3 \
+    CMD curl -f http://localhost:8000/health || exit 1
 
 ENTRYPOINT ["/code/entrypoint.sh"]

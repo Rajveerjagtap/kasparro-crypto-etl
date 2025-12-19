@@ -19,9 +19,13 @@ from app.db.models import ETLStatus
 from app.ingestion.service import etl_service
 
 # Configure structured logging
+LOG_FMT = (
+    '{"timestamp": "%(asctime)s", "level": "%(levelname)s", '
+    '"module": "%(name)s", "message": "%(message)s"}'
+)
 logging.basicConfig(
     level=logging.INFO,
-    format='{"timestamp": "%(asctime)s", "level": "%(levelname)s", "module": "%(name)s", "message": "%(message)s"}',
+    format=LOG_FMT,
     datefmt="%Y-%m-%dT%H:%M:%S%z",
 )
 logger = logging.getLogger("kasparro.scheduler")
@@ -52,7 +56,10 @@ class ETLScheduler:
             # Count successes
             success_count = 0
             for job in results.values():
-                logger.info(f"Job source: {job.source}, status: {job.status} (type: {type(job.status)}), expected: {ETLStatus.SUCCESS}")
+                logger.info(
+                    f"Job source: {job.source}, status: {job.status} "
+                    f"(type: {type(job.status)}), expected: {ETLStatus.SUCCESS}"
+                )
                 if job.status == ETLStatus.SUCCESS or str(job.status) == ETLStatus.SUCCESS.value:
                     success_count += 1
 
@@ -97,7 +104,8 @@ class ETLScheduler:
 
         # Start scheduler
         self.scheduler.start()
-        logger.info(f"Scheduler started. Next run at: {self.scheduler.get_job('etl_main_job').next_run_time}")
+        next_run = self.scheduler.get_job('etl_main_job').next_run_time
+        logger.info(f"Scheduler started. Next run at: {next_run}")
 
         # Keep alive
         try:

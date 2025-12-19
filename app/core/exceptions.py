@@ -3,7 +3,7 @@
 from typing import Any, Optional
 
 
-class KasparroException(Exception):
+class KasparroException(Exception):  # noqa: N818 - Project naming convention
     """Base exception for all application errors."""
 
     def __init__(self, message: str, details: Optional[dict[str, Any]] = None):

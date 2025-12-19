@@ -117,7 +117,8 @@ class AssetResolver:
             self._mapping_cache[cache_key] = existing_coin.id
             self._symbol_cache[normalized_symbol] = existing_coin.id
             logger.info(
-                f"Linked {source.value}:{source_id} to existing Coin {existing_coin.symbol} (id={existing_coin.id})"
+                f"Linked {source.value}:{source_id} to existing Coin "
+                f"{existing_coin.symbol} (id={existing_coin.id})"
             )
             return existing_coin.id
 

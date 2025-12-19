@@ -197,6 +197,10 @@ async def get_stats(db: AsyncSession = Depends(get_db)) -> StatsResponse:
     symbol_stats = []
     for row in stats_result:
         sources = getattr(row, 'sources', None) or [s.value for s in DataSource]
+        sources_list = (
+            sources if isinstance(sources, list)
+            else [str(s) for s in sources] if sources else []
+        )
         symbol_stats.append(
             SymbolStats(
                 symbol=row.symbol,
@@ -204,7 +208,7 @@ async def get_stats(db: AsyncSession = Depends(get_db)) -> StatsResponse:
                 avg_price_usd=float(row.avg_price) if row.avg_price else 0.0,
                 max_price_usd=float(row.max_price) if row.max_price else 0.0,
                 min_price_usd=float(row.min_price) if row.min_price else 0.0,
-                sources=sources if isinstance(sources, list) else [str(s) for s in sources] if sources else [],
+                sources=sources_list,
             )
         )
 
@@ -219,8 +223,16 @@ async def get_stats(db: AsyncSession = Depends(get_db)) -> StatsResponse:
     total_records_processed = sum(j.records_processed or 0 for j in etl_jobs)
 
     # Get last success/failure timestamps
-    last_success = max((j.completed_at for j in etl_jobs if j.status == ETLStatus.SUCCESS and j.completed_at), default=None)
-    last_failure = max((j.completed_at for j in etl_jobs if j.status == ETLStatus.FAILURE and j.completed_at), default=None)
+    success_jobs = [
+        j.completed_at for j in etl_jobs
+        if j.status == ETLStatus.SUCCESS and j.completed_at
+    ]
+    failure_jobs = [
+        j.completed_at for j in etl_jobs
+        if j.status == ETLStatus.FAILURE and j.completed_at
+    ]
+    last_success = max(success_jobs, default=None)
+    last_failure = max(failure_jobs, default=None)
 
     # Get last job duration
     last_job = max(etl_jobs, key=lambda j: j.started_at, default=None) if etl_jobs else None
@@ -257,7 +269,7 @@ async def get_stats(db: AsyncSession = Depends(get_db)) -> StatsResponse:
     )
 
 
-# ============== GET /metrics - Prometheus Metrics (P2.5) ==============
+# ============== GET /metrics - Prometheus Metrics (P2.4) ==============
 
 
 @router.get("/metrics")
@@ -268,7 +280,128 @@ async def get_metrics():
     from fastapi.responses import PlainTextResponse
 
     from app.core.middleware import metrics_collector
-    return PlainTextResponse(content=metrics_collector.get_prometheus_output(), media_type="text/plain")
+    content = metrics_collector.get_prometheus_output()
+    return PlainTextResponse(content=content, media_type="text/plain")
+
+
+# ============== GET /runs - ETL Run History with Anomaly Detection (P2.6) ==============
+
+
+@router.get("/runs")
+async def get_runs(
+    limit: int = Query(10, ge=1, le=100, description="Number of runs to return"),
+    source: Optional[DataSource] = Query(None, description="Filter by source"),
+    status: Optional[ETLStatus] = Query(None, description="Filter by status"),
+    db: AsyncSession = Depends(get_db),
+) -> dict[str, Any]:
+    """
+    Get ETL run history with anomaly detection.
+
+    Returns recent runs with statistical analysis to identify anomalies:
+    - Duration outliers (>2 standard deviations from mean)
+    - Record count anomalies
+    - Failure rate spikes
+    """
+    # Build query
+    query = select(ETLJob).order_by(ETLJob.started_at.desc())
+
+    if source:
+        query = query.where(ETLJob.source == source)
+    if status:
+        query = query.where(ETLJob.status == status)
+
+    query = query.limit(limit)
+
+    result = await db.execute(query)
+    jobs = list(result.scalars().all())
+
+    if not jobs:
+        return {"runs": [], "anomalies": [], "statistics": {}}
+
+    # Calculate statistics for anomaly detection
+    durations = []
+    record_counts = []
+    success_count = 0
+    failure_count = 0
+
+    for job in jobs:
+        if job.completed_at and job.started_at:
+            duration = (job.completed_at - job.started_at).total_seconds()
+            durations.append(duration)
+        if job.records_processed is not None:
+            record_counts.append(job.records_processed)
+        if job.status == ETLStatus.SUCCESS:
+            success_count += 1
+        elif job.status == ETLStatus.FAILURE:
+            failure_count += 1
+
+    # Calculate mean and std dev for anomaly detection
+    import statistics
+    anomalies = []
+
+    if len(durations) >= 3:
+        mean_duration = statistics.mean(durations)
+        std_duration = statistics.stdev(durations) if len(durations) > 1 else 0
+
+        # Check for duration anomalies (>2 std devs)
+        for job in jobs:
+            if job.completed_at and job.started_at:
+                duration = (job.completed_at - job.started_at).total_seconds()
+                if std_duration > 0 and abs(duration - mean_duration) > 2 * std_duration:
+                    z_score = (duration - mean_duration) / std_duration if std_duration else 0
+                    lower = mean_duration - 2 * std_duration
+                    upper = mean_duration + 2 * std_duration
+                    anomalies.append({
+                        "job_id": job.id,
+                        "type": "duration_outlier",
+                        "value": duration,
+                        "expected_range": f"{lower:.1f} - {upper:.1f}",
+                        "z_score": z_score,
+                    })
+
+    if len(record_counts) >= 3:
+        mean_records = statistics.mean(record_counts)
+        std_records = statistics.stdev(record_counts) if len(record_counts) > 1 else 0
+
+        # Check for record count anomalies
+        for job in jobs:
+            if job.records_processed is not None and std_records > 0:
+                if abs(job.records_processed - mean_records) > 2 * std_records:
+                    z_score = (job.records_processed - mean_records) / std_records
+                    lower = max(0, mean_records - 2 * std_records)
+                    upper = mean_records + 2 * std_records
+                    anomalies.append({
+                        "job_id": job.id,
+                        "type": "record_count_outlier",
+                        "value": job.records_processed,
+                        "expected_range": f"{lower:.0f} - {upper:.0f}",
+                        "z_score": z_score,
+                    })
+
+    # Check for failure rate spike
+    total_jobs = success_count + failure_count
+    if total_jobs > 0:
+        failure_rate = failure_count / total_jobs
+        if failure_rate > 0.3:  # More than 30% failures is anomalous
+            anomalies.append({
+                "type": "high_failure_rate",
+                "value": failure_rate,
+                "threshold": 0.3,
+                "message": f"{failure_rate:.1%} of recent jobs failed",
+            })
+
+    return {
+        "runs": [ETLJobSchema.model_validate(job) for job in jobs],
+        "anomalies": anomalies,
+        "statistics": {
+            "total_runs": len(jobs),
+            "success_count": success_count,
+            "failure_count": failure_count,
+            "success_rate": success_count / total_jobs if total_jobs > 0 else 0,
+            "avg_duration_seconds": statistics.mean(durations) if durations else None,
+            "avg_records_processed": statistics.mean(record_counts) if record_counts else None,
+        },
+    }
 
 
 # ============== GET /runs/compare - Compare ETL Runs (P2.6) ==============
@@ -293,12 +426,19 @@ async def compare_runs(
     job1 = jobs[run_id_1]
     job2 = jobs[run_id_2]
 
+    # Calculate duration delta safely
+    duration_delta = None
+    if job1.completed_at and job2.completed_at:
+        dur1 = (job1.completed_at - job1.started_at).total_seconds()
+        dur2 = (job2.completed_at - job2.started_at).total_seconds()
+        duration_delta = dur2 - dur1
+
     return {
         "run_1": ETLJobSchema.model_validate(job1),
         "run_2": ETLJobSchema.model_validate(job2),
         "diff": {
             "records_processed": job2.records_processed - job1.records_processed,
-            "duration_delta": (job2.completed_at - job2.started_at).total_seconds() - (job1.completed_at - job1.started_at).total_seconds() if job1.completed_at and job2.completed_at else None
+            "duration_delta": duration_delta
         }
     }
 

@@ -44,9 +44,15 @@ class ETLService:
         self._extractors: dict[DataSource, BaseExtractor] = {}
         # Initialize drift detectors per source
         self.drift_detectors = {
-            DataSource.COINPAPRIKA: DriftDetector(expected_columns=["id", "symbol", "name", "quotes"]),
-            DataSource.COINGECKO: DriftDetector(expected_columns=["id", "symbol", "name", "current_price"]),
-            DataSource.CSV: DriftDetector(expected_columns=["ticker", "price", "vol", "date"]),
+            DataSource.COINPAPRIKA: DriftDetector(
+                expected_columns=["id", "symbol", "name", "quotes"]
+            ),
+            DataSource.COINGECKO: DriftDetector(
+                expected_columns=["id", "symbol", "name", "current_price"]
+            ),
+            DataSource.CSV: DriftDetector(
+                expected_columns=["ticker", "price", "vol", "date"]
+            ),
         }
         # Asset resolver for canonical entity normalization
         self.asset_resolver = AssetResolver()
@@ -167,8 +173,9 @@ class ETLService:
         deduplicated = list(unique_records.values())
 
         if len(deduplicated) < len(resolved_records):
+            dropped = len(resolved_records) - len(deduplicated)
             logger.warning(
-                f"Dropped {len(resolved_records) - len(deduplicated)} duplicate records before upsert."
+                f"Dropped {dropped} duplicate records before upsert."
             )
 
         # Build values for bulk upsert with coin_id
@@ -270,7 +277,8 @@ class ETLService:
                     )
                     job.status = ETLStatus.SUCCESS
                     metrics_collector.increment_etl_run(source.value, "success")
-                    metrics_collector.set_etl_duration(source.value, time.perf_counter() - start_time)
+                    duration = time.perf_counter() - start_time
+                    metrics_collector.set_etl_duration(source.value, duration)
                     return job
 
                 # --- Data Drift Detection ---
