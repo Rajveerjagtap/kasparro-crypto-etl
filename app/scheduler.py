@@ -38,7 +38,8 @@ class ETLScheduler:
     def __init__(self):
         self.scheduler = AsyncIOScheduler()
         # Support both seconds (SCHEDULE_INTERVAL) and hours (ETL_INTERVAL_HOURS)
-        self.interval_seconds = int(os.getenv("SCHEDULE_INTERVAL", "3600"))
+        # Default: 120 seconds (2 minutes) for development/testing
+        self.interval_seconds = int(os.getenv("SCHEDULE_INTERVAL", "120"))
         if "ETL_INTERVAL_HOURS" in os.environ:
             self.interval_seconds = int(os.getenv("ETL_INTERVAL_HOURS")) * 3600
 

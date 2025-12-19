@@ -196,14 +196,13 @@ class ETLService:
         # PostgreSQL upsert using INSERT ... ON CONFLICT
         stmt = insert(UnifiedCryptoData).values(values)
 
-        # Update on conflict: (coin_id, timestamp) - canonical entity deduplication
+        # Update on conflict: (coin_id, source, timestamp) - matches uq_coin_source_timestamp constraint
         stmt = stmt.on_conflict_do_update(
-            index_elements=["coin_id", "timestamp"],
+            index_elements=["coin_id", "source", "timestamp"],
             set_={
                 "price_usd": stmt.excluded.price_usd,
                 "market_cap": stmt.excluded.market_cap,
                 "volume_24h": stmt.excluded.volume_24h,
-                "source": stmt.excluded.source,
                 "ingested_at": stmt.excluded.ingested_at,
             },
         )
