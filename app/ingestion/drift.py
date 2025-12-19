@@ -250,8 +250,8 @@ class DriftDetector:
         if not self._drift_history:
             return {"total_issues": 0, "by_severity": {}, "by_type": {}}
 
-        by_severity = {}
-        by_type = {}
+        by_severity: dict[str, int] = {}
+        by_type: dict[str, int] = {}
 
         for result in self._drift_history:
             by_severity[result.severity.value] = by_severity.get(result.severity.value, 0) + 1
